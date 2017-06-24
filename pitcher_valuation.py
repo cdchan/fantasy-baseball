@@ -99,6 +99,7 @@ def calculate_raw_score():
 
     projections = load_fangraphs_pitcher_projections()
     projections = projections.query('IP > 1').copy()
+    projections = projections[projections['Team'].notnull()]
 
     positions = load_pitcher_positions()
     # positions = correct_pitcher_positions(positions)

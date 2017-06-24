@@ -4,7 +4,7 @@ from Cookie import SimpleCookie
 
 
 WORKING_DIRECTORY = None
-
+DATA_DIRECTORY = None  # subdirectory under WORKING_DIRECTORY
 
 #####
 # team settings

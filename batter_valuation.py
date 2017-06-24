@@ -104,6 +104,7 @@ def calculate_raw_score():
 
     projections = load_fangraphs_batter_projections()
     projections = projections.query('PA > 20').copy()
+    projections = projections[projections['Team'].notnull()]
 
     positions = load_batter_positions()
     positions = correct_batter_positions(positions)  # account for any upcoming player position changes
