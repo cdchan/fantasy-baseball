@@ -17,7 +17,7 @@ def load_mapping():
     Load player id mappings
 
     """
-    mapping = pandas.read_csv(os.path.join(WORKING_DIRECTORY, 'player_mapping.csv'), dtype={'mlbam_id': object, 'bis_id': object, 'espn_id': object})
+    mapping = pandas.read_csv(os.path.join(WORKING_DIRECTORY, 'player_mapping.csv'), dtype={'mlbam_id': object, 'bis_id': object, 'espn_id': object}, encoding='utf-8')
 
     mapping['playerid'] = mapping['bis_id'].combine_first(mapping['stats_id'])  # use BIS id if available, otherwise STATS id
 
@@ -26,12 +26,14 @@ def load_mapping():
     return mapping
 
 
-def load_fangraphs_pitcher_projections():
+def load_fangraphs_pitcher_projections(projection_type):
     """
-    Load Fangraphs Depth Charts pitcher projections
+    Load Fangraphs pitcher projections
 
     """
-    projections = pandas.read_csv(os.path.join(WORKING_DIRECTORY, 'depthcharts_pitchers.csv'), encoding="utf-8-sig")
+    filename = '{}_pitchers.csv'.format(projection_type)
+
+    projections = pandas.read_csv(os.path.join(WORKING_DIRECTORY, filename), encoding="utf-8-sig")
 
     projections.rename(columns={'"Name"': "name", 'Name': "name", 'K/9': "K9", 'SO': "K"}, inplace=True)
 
@@ -40,12 +42,14 @@ def load_fangraphs_pitcher_projections():
     return projections
 
 
-def load_fangraphs_batter_projections():
+def load_fangraphs_batter_projections(projection_type):
     """
-    Load Fangraphs Depth Charts batter projections
+    Load Fangraphs batter projections
 
     """
-    projections = pandas.read_csv(os.path.join(WORKING_DIRECTORY, 'depthcharts_batters.csv'), encoding="utf-8-sig", error_bad_lines=False)
+    filename = '{}_batters.csv'.format(projection_type)
+
+    projections = pandas.read_csv(os.path.join(WORKING_DIRECTORY, filename), encoding="utf-8-sig", error_bad_lines=False)
 
     projections.rename(columns={'"Name"': "name", 'Name': "name", '2B': "D", '3B': "T"}, inplace=True)  # columns can't begin with numbers
 
@@ -73,7 +77,7 @@ def load_pitcher_positions(old=False):
     Load pitcher teams and positional eligibilities from ESPN
 
     """
-    positions = pandas.read_csv(os.path.join(WORKING_DIRECTORY, 'pitcher_eligibilities.csv'), na_values='NA', dtype={'espn_id': object})
+    positions = pandas.read_csv(os.path.join(WORKING_DIRECTORY, 'pitcher_eligibilities.csv'), na_values='NA', dtype={'espn_id': object}, encoding='utf-8')
 
     rename_columns = {
         'name': 'name_espn',
@@ -94,7 +98,7 @@ def load_batter_positions(old=False):
     Load batter teams and positional eligibilities from ESPN
 
     """
-    positions = pandas.read_csv(os.path.join(WORKING_DIRECTORY, 'batter_eligibilities.csv'), na_values='NA', dtype={'espn_id': object})
+    positions = pandas.read_csv(os.path.join(WORKING_DIRECTORY, 'batter_eligibilities.csv'), na_values='NA', dtype={'espn_id': object}, encoding='utf-8')
 
     # manual_correction_batter_eligibility(positions)
 

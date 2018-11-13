@@ -11,7 +11,7 @@ import lxml.html
 import pandas
 import requests
 
-from config import ESPN_COOKIES, LEAGUE_ID
+from config import ESPN_COOKIE, LEAGUE_ID
 
 
 def main():
@@ -19,7 +19,7 @@ def main():
         'leagueId': LEAGUE_ID,
     }
 
-    r = requests.get("http://games.espn.com/flb/leaguerosters", params=params, cookies=ESPN_COOKIES)
+    r = requests.get("http://games.espn.com/flb/leaguerosters", params=params, headers={'cookie': ESPN_COOKIE})
 
     root = lxml.html.fromstring(r.text)
 

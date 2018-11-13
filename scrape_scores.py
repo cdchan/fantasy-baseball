@@ -13,23 +13,24 @@ import lxml.html
 import pandas
 import requests
 
-from config import DATA_DIRECTORY, ESPN_COOKIES, LEAGUE_ID
-
+from config import DATA_DIRECTORY, LEAGUE_ID, ESPN_COOKIE
 
 STATS_BATTING = ['AB', 'H', 'R', 'HR', 'RBI', 'BB', 'SB', 'OBP']
-STATS_PITCHING = ['IP', 'H', 'ER', 'BB', 'W', 'SV', 'ERA', 'WHIP', 'K9']
 
-BASE_URL = 'http://games.espn.go.com'
+STATS_PITCHING = ['IP', 'pH', 'ER', 'pBB', 'W', 'SV', 'ERA', 'WHIP', 'K9']
+STATS_PITCHING_OLD = ['IP', 'W', 'SV', 'ERA', 'WHIP', 'K9']  # before 2017, the reported stats for pitching were different
+
+BASE_URL = 'http://games.espn.com'
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--year", action="store", default=2017, help="year to scrape scores for")
+    parser.add_argument("--year", action="store", default=2018, help="year to scrape scores for")
     args = parser.parse_args()
 
     year = args.year
 
-    matchups = collect_urls(year, ESPN_COOKIES)
+    matchups = collect_urls(year, ESPN_COOKIE)
 
     output = pandas.DataFrame(matchups)
 
@@ -40,12 +41,16 @@ def main():
         'opponent_team_id',
     ]
     columns += STATS_BATTING
-    columns += STATS_PITCHING
+
+    if int(args.year) >= 2017:
+        columns += STATS_PITCHING
+    else:
+        columns += STATS_PITCHING_OLD
 
     output.to_csv('{}/scores_{}.csv'.format(DATA_DIRECTORY, year), columns=columns, encoding='utf8', index=False)
 
 
-def collect_urls(year, cookies):
+def collect_urls(year, cookie):
     """
     Collect links to all of the box scores
 
@@ -56,7 +61,7 @@ def collect_urls(year, cookies):
         'seasonId': year,
     }
 
-    r = requests.get("http://games.espn.go.com/flb/schedule", params=params, cookies=cookies)
+    r = requests.get("http://games.espn.com/flb/schedule", params=params, headers={'cookie': cookie})
 
     root = lxml.html.fromstring(r.text)
 
@@ -68,7 +73,7 @@ def collect_urls(year, cookies):
         if 'boxscorefull' in link.get('href', ''):  # indicates a link to a box score
             if link.text != 'Box':  # ignore matchups that haven't happened yet, which are labelled as "Box"
                 print BASE_URL + link.get('href')
-                team_a, team_b = extract_boxscore(BASE_URL + link.get('href'), cookies)
+                team_a, team_b = extract_boxscore(BASE_URL + link.get('href'), cookie)
 
                 matchups.append(team_a)
                 matchups.append(team_b)
@@ -78,32 +83,40 @@ def collect_urls(year, cookies):
     return matchups
 
 
-def extract_boxscore(url, cookies):
+def extract_boxscore(url, cookie):
     """
     Retrieves box score and extracts category scores
 
     """
-    r = requests.get(url, cookies=cookies)
+    r = requests.get(url, headers={
+        'cookie': cookie
+    })
 
     params = urlparse.parse_qs(urlparse.urlparse(url).query)
 
+    year = int(params['seasonId'][0])
     matchup_period = params['scoringPeriodId'][0]
-    year = params['seasonId'][0]
 
-    try:
-        teams = team_stats(r.text)
-    except Exception as exc:
-        print exc
-        import code; code.interact(local=dict(globals(), **locals()))
+    teams = team_stats(r.text, year)
 
     for team in teams:
         team['year'] = year
         team['matchup_period'] = matchup_period
 
+    if teams[1]['team_id'] == '6':
+        print 'hi'
+        true_team_1_id = teams[1]['opponent_team_id']
+
+        teams[0]['opponent_team_id'] = true_team_1_id
+        teams[0]['team_id'] = '6'
+
+        teams[1]['opponent_team_id'] = '6'
+        teams[1]['team_id'] = true_team_1_id
+
     return teams[0], teams[1]
 
 
-def team_stats(text):
+def team_stats(text, year):
     """
     Extract category scores
 
@@ -119,7 +132,7 @@ def team_stats(text):
         teams[i]['team_id'] = extract_team_id(team_id_rows[i].cssselect('a')[0].get('href'))
 
         teams[i].update(extract_stats(score_rows[0 + i * 2], 'batting'))
-        teams[i].update(extract_stats(score_rows[1 + i * 2], 'pitching'))
+        teams[i].update(extract_stats(score_rows[1 + i * 2], 'pitching', year))
 
     teams[0]['opponent_team_id'] = teams[1]['team_id']
     teams[1]['opponent_team_id'] = teams[0]['team_id']
@@ -135,7 +148,7 @@ def extract_team_id(url):
     return urlparse.parse_qs(urlparse.urlparse(url).query)['teamId'][0]
 
 
-def extract_stats(row, kind):
+def extract_stats(row, kind, year=2017):
     """
     Extract the numbers from each row of the box score.
 
@@ -143,7 +156,10 @@ def extract_stats(row, kind):
     if kind == 'batting':
         stats = STATS_BATTING
     elif kind == 'pitching':
-        stats = STATS_PITCHING
+        if year >= 2017:
+            stats = STATS_PITCHING
+        else:
+            stats = STATS_PITCHING_OLD
 
     scores = {}
 
