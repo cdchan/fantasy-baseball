@@ -43,11 +43,12 @@ def scrape_player_type(group):
 
     while True:
         r = requests.get("http://games.espn.com/flb/tools/eligibility", params=params)
+        print r.encoding  # need to figure out accents in names
 
         print u"working on player {}".format(params['startIndex'])
 
         if r.status_code == 200:
-            root = lxml.html.fromstring(r.text)  # parse into HTML tree
+            root = lxml.html.fromstring(r.text.encode('utf-8'))  # parse into HTML tree
 
             for row in root.cssselect('tr.pncPlayerRow'):  # loop over players
                 player = process_row(row)
