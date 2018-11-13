@@ -48,6 +48,10 @@ fangraphs_form_data = {
 }
 
 
+fangraphs_leaderboard_form_data = {
+}
+
+
 #####
 # ESPN settings
 
