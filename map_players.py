@@ -17,7 +17,7 @@ import utils
 from utils import load_fangraphs_batter_projections, load_batter_positions, load_fangraphs_pitcher_projections, load_pitcher_positions, load_mapping, WORKING_DIRECTORY
 
 
-INTERACTIVE = True
+INTERACTIVE = False
 
 
 def main():
@@ -26,7 +26,7 @@ def main():
     print u"mapping batters"
 
     # load player projections to filter for only fantasy relevant players
-    projections = load_fangraphs_batter_projections()
+    projections = load_fangraphs_batter_projections('rfangraphsdc')
     projections = projections.query('PA > 20')  # only batters projected for more than 20 PA
     mapping = map_projections(projections, 'stats_id', mapping)
     mapping = map_projections(projections, 'bis_id', mapping)
@@ -36,8 +36,8 @@ def main():
 
     print u"mapping pitchers"
 
-    projections = load_fangraphs_pitcher_projections()
-    projections = projections.query('IP > 20')  # only pitchers projected for more than 20 IP
+    projections = load_fangraphs_pitcher_projections('rfangraphsdc')
+    projections = projections.query('IP > 10')  # only pitchers projected for more than 20 IP
     mapping = map_projections(projections, 'stats_id', mapping)
     mapping = map_projections(projections, 'bis_id', mapping)
 
@@ -71,10 +71,36 @@ def map_projections(projections, id_name, mapping):
     players = projections[projections[id_name].notnull()]
 
     # filter to only players without unknown MLBAM ids
-    players = players.merge(mapping[['mlbam_id', id_name]], how='left', on=id_name)
-    players_to_map = players[players['mlbam_id'].isnull()]
+    players_test = players.merge(mapping[['mlbam_id', id_name]], how='left', on=id_name)
+    players_to_map = players_test[players_test['mlbam_id'].isnull()].copy()
+
+    mapping = update_with_crunchtime(players_to_map, id_name, mapping)
+
+    players_test = players.merge(mapping[['mlbam_id', id_name]], how='left', on=id_name)
+    players_to_map = players_test[players_test['mlbam_id'].isnull()].copy()
 
     return map_to_mlbam(players_to_map, id_name, mapping)
+
+
+def update_with_crunchtime(players_to_map, id_name, mapping):
+    crunch = pandas.read_csv("crunchtimebaseball-master.csv")
+
+    crunch = crunch[['mlb_id', 'mlb_name', 'fg_id']]
+    crunch = crunch.rename(columns={
+        'fg_id': 'playerid',
+        'mlb_id': 'mlbam_id',
+    })
+
+    new_mapping = players_to_map.merge(crunch[['mlbam_id', 'playerid']], on='playerid')
+
+    new_mapping = new_mapping[['name', 'stats_id', 'mlbam_id_y']]
+    new_mapping = new_mapping.rename(columns={
+        'mlbam_id_y': 'mlbam_id'
+    })
+
+    mapping = mapping.append(new_mapping, ignore_index=True)
+
+    return mapping
 
 
 def map_to_mlbam(players, id_name, mapping):
@@ -116,9 +142,10 @@ def map_to_mlbam(players, id_name, mapping):
                 if INTERACTIVE:  # gives user a prompt to select the right player
                     mlbam_id = [interactive(exc.args[1])]
             finally:
-                new_mapping['mlbam_id'] = mlbam_id
+                if mlbam_id:  # have a match
+                    new_mapping['mlbam_id'] = mlbam_id
 
-                mapping = mapping.append(pandas.DataFrame(new_mapping), ignore_index=True)
+                    mapping = mapping.append(pandas.DataFrame(new_mapping), ignore_index=True)
         else:
             mapping.set_value(
                 mapping['mlbam_id'] == mlbam_id,  # row
@@ -173,11 +200,12 @@ def map_espn(projections, positions, mapping):
             if INTERACTIVE:
                 espn_id = interactive(exc.args[1])
         finally:
-            mapping.set_value(
-                mapping['mlbam_id'] == player.mlbam_id,  # row
-                'espn_id',  # column
-                espn_id  # new value
-            )
+            if espn_id:
+                mapping.set_value(
+                    mapping['mlbam_id'] == player.mlbam_id,  # row
+                    'espn_id',  # column
+                    espn_id  # new value
+                )
 
     return mapping
 
@@ -192,8 +220,10 @@ def interactive(matches):
 
     match_index = input("Which match? (0 for none) ")
 
-    if match_index:
-        return matches[match_index + 1][2]
+    if match_index != 0:
+        print matches
+        print match_index
+        return matches[match_index - 1][2]
     else:
         return None
 
