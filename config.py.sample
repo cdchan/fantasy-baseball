@@ -1,17 +1,34 @@
+"""
+Configuration file
+
+Variables to update:
+* WORKING_DIRECTORY
+* DATA_DIRECTORY
+* CURRENT_YEAR
+* season_final_day
+* fangraphs_form_data
+* LEAGUE_ID
+* ESPN_COOKIE
+
+"""
+
 import datetime
+import requests
 
-from Cookie import SimpleCookie
+
+WORKING_DIRECTORY = ''
+DATA_DIRECTORY = ''  # subdirectory under WORKING_DIRECTORY
 
 
-WORKING_DIRECTORY = None
-DATA_DIRECTORY = None  # subdirectory under WORKING_DIRECTORY
+CURRENT_YEAR = 2018
+
 
 #####
 # team settings
 
 N_TEAMS = 12  # number of teams
 
-season_final_day = datetime.datetime(2017, 10, 1)
+season_final_day = datetime.datetime(2018, 9, 30)
 REMAINING_WEEKS = (season_final_day - datetime.datetime.today()).days / 7 - 1  # at run time, how many weeks remaining in the season
 
 if REMAINING_WEEKS > 25:
@@ -36,9 +53,13 @@ fangraphs_form_data = {
 
 LEAGUE_ID = None  # ESPN league number
 
-cookie = SimpleCookie()
-cookie.load("""key=value;""")  # cookies for ESPN authentication
+ESPN_COOKIE = r''''''
 
-ESPN_COOKIES = {}
-for key, morsel in cookie.items():
-    ESPN_COOKIES[key] = morsel.value
+cookie_dict = {}
+
+for x in ESPN_COOKIE.split(';'):
+    k, v = x.strip().split('=')
+    cookie_dict[k] = v
+
+espn_session = requests.Session()
+espn_session.cookies = requests.cookies.cookiejar_from_dict(cookie_dict)
