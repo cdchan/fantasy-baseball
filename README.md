@@ -15,7 +15,7 @@ The category valuations are applied against rest-of-season projections from Fang
 
 ## Each week / scoring period
 
-Run order:
+To gather fresh data:
 
 1. scrape_playing_time.py
     * Scrape the number of PA / IP for each player in the past 14 days.
@@ -34,3 +34,8 @@ After a scoring period:
     * Update head to head results from the latest week.
 1. prob_added.py
     * Update the logistic regression.
+
+To value players:
+
+1. batter_valuation.py
+1. pitcher_valuation.py

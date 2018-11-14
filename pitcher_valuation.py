@@ -9,8 +9,9 @@ import datetime
 import numpy
 import pandas
 
+from sklearn.externals import joblib
 
-from marginals import calculate_marginals_pitcher
+
 from utils import load_mapping, load_fangraphs_pitcher_projections, load_pitcher_positions, load_keepers, add_espn_auction_values, add_roster_state
 
 from config import REMAINING_WEEKS, N_PITCHERS, N_TEAMS, BATTER_BUDGET_RATIO
@@ -21,14 +22,15 @@ def main():
     parser.add_argument("--draft", action="store_true", help="prepare for auction draft")
     args = parser.parse_args()
 
-    # calculate raw score
-    pitchers = calculate_raw_score()
+    # calculate win probability added
+    pitchers = calculate_p_added()
 
     pitchers = calculate_replacement_score(pitchers)
 
-    pitchers['adj_score'] = pitchers['raw_score'] - pitchers['rep_score']
+    # adjust win probability for positional scarcity
+    pitchers['adj_p_added_per_week'] = pitchers['p_added_per_week'] - pitchers['rep_p_added_per_week']
 
-    pitchers = pitchers.sort_values('adj_score', ascending=False)
+    pitchers = pitchers.sort_values('adj_p_added_per_week', ascending=False)
 
     pitchers = add_valuation(pitchers)
 
@@ -56,50 +58,50 @@ def main():
         ]
 
     columns += [
-        # 'position',
-        'adj_score',
-        'ratios_score',
-        # 'team_abbr',
-        'IP',
-        'G',
+        'p_added_per_week',
+        'ratios_p_added_per_week',
+        'IP_per_week',
+        'l14_IP_per_week',
         'GS',
+        'G',
+        'IP',
+        'relief_IP',
         'W',
         'SV',
         'ERA',
         'WHIP',
         'K9',
-        'SP',
-        'RP',
-        'raw_score',
-        'rep_score',
-        'xER_score_per_week',
-        'xWH_score_per_week',
-        'xK_score_per_week',
-        'IP_per_week',
+        'IP_p_added_per_week',
+        'W_p_added_per_week',
+        'SV_p_added_per_week',
+        'ER_p_added_per_week',
+        'WH_p_added_per_week',
+        'K_p_added_per_week',
         'weeks',
-    ]
+        'mW_per_week',
+        ]
 
     remaining_columns = [c for c in pitchers.columns if c not in columns]
 
     columns += remaining_columns
 
-    pitchers = pitchers.sort_values('ratios_score', ascending=False)
+    pitchers = pitchers.sort_values('p_added_per_week', ascending=False)
 
     pitchers.to_csv('pitcher_{:%Y%m%d}.csv'.format(datetime.datetime.today()), index=False, columns=columns)
 
 
-def calculate_raw_score():
+def calculate_p_added():
     """
-    Calculate pitcher raw score from projected stats
+    Calculate probability added for pitchers from projected stats
 
     Use the marginal win probability over mean of each stat
 
     """
     mapping = load_mapping()
 
-    projections = load_fangraphs_pitcher_projections()
-    projections = projections.query('IP > 1').copy()
-    projections = projections[projections['Team'].notnull()]
+    projections = load_fangraphs_pitcher_projections('steamer600u')
+    projections = projections.query('IP > 1').copy()  # only consider pitchers projected for more than 1 IP
+    projections = projections[projections['Team'].notnull()]  # remove pitchers with no team
 
     positions = load_pitcher_positions()
     # positions = correct_pitcher_positions(positions)
@@ -107,51 +109,127 @@ def calculate_raw_score():
     pitchers = projections.merge(mapping[['mlbam_id', 'playerid', 'espn_id']], how='left', on='playerid')
     pitchers = pitchers.merge(positions, how='left', on='espn_id')
 
-    marginals, means = calculate_marginals_pitcher()
+    pitchers = add_playing_time(pitchers)  # add in the latest playing time for pitchers
 
-    contribution_ratio = 1.0 / N_PITCHERS * REMAINING_WEEKS  # weekly score * number of weeks left in season / number of pitchers per team is each pitchers's expected contribution for the rest of the season
+    pitcher_categories_info = joblib.load('pitchers.pkl')  # load results of the logistic regression
 
-    pitchers['as_SP'] = (pitchers['GS'] > 1)
+    base_team_probabilities = {
+        'SV': 0.5,
+        'ERA': 0.5,
+        'WHIP': 0.5,
+        'K9': 0.5,
+        'W': 0.5,
+        'IP': 0.5,
+    }
 
-    pitchers['mW'] = pitchers['W'] - (means['W'][0] * contribution_ratio)  # extra W over the mean pitcher
-    pitchers['mIP'] = pitchers['IP'] - (means['IP'][0] * contribution_ratio)  # extra W over the mean pitcher
-    pitchers['mSV'] = pitchers['SV'] - (means['SV'][0] * contribution_ratio)  # extra W over the mean pitcher
+    pitcher_categories_info['base_level'] = {}
 
-    pitchers['IP_per_GS'] = (pitchers['IP'] - pitchers['G'] + pitchers['GS']) / pitchers['GS']
-    pitchers['IP_per_week'] = 65.0 / 25  # default for relievers is 65 IP per season, 25 weeks
+    for cat, lm in pitcher_categories_info['models'].iteritems():
+        base_level = (numpy.log(-base_team_probabilities[cat] / (base_team_probabilities[cat] - 1)) - lm.intercept_[0]) / lm.coef_[0][0]
 
-    # use a SP's workload if not a RP
-    # default is 32 starts per season, 25 weeks, so multiply IP per GS by 32 / 25 for IP per week
-    pitchers['IP_per_week'] = pitchers['IP_per_week'].where(~pitchers['as_SP'], pitchers['IP_per_GS'] * 32.0 / 25)
-    pitchers['weeks'] = numpy.where(~pitchers['as_SP'], pitchers['IP'] / (65.0 / 25), pitchers['GS'] / (32.0 / 25))
+        pitcher_categories_info['base_level'][cat] = base_level
 
-    # we don't use contribution ratio or REMAINING_WEEKS here because that is already built in into the pitcher's projected IP
-    pitchers['xER_per_week'] = (pitchers['ERA'] - means['ERA'][0]) / 9 * pitchers['IP_per_week']  # use ERA over ER for more accuracy when IP is small
-    pitchers['xWH_per_week'] = (pitchers['WHIP'] - means['WHIP'][0]) * pitchers['IP_per_week']  # use WHIP over BB and H for more accuracy when IP is small
-    pitchers['xK_per_week'] = (pitchers['K9'] - means['K9'][0]) / 9 * pitchers['IP_per_week']
+    pitcher_categories_info['p_added_new'] = {}
 
-    pitchers['xER'] = pitchers['xER_per_week'] * pitchers['weeks']
-    pitchers['xWH'] = pitchers['xWH_per_week'] * pitchers['weeks']
-    pitchers['xK'] = pitchers['xK_per_week'] * pitchers['weeks']
+    team_IP_per_week = 21
 
-    # divide seasonal stats by the remaining weeks left in the season
-    # the marginals are by week
-    pitchers['IP_score'] = pitchers['mIP'] / REMAINING_WEEKS / marginals['IP'][0]
-    pitchers['W_score'] = pitchers['mW'] / REMAINING_WEEKS / marginals['W'][0]
-    pitchers['SV_score'] = pitchers['mSV'] / REMAINING_WEEKS / marginals['SV'][0]
-    pitchers['xER_score'] = - pitchers['xER'] / REMAINING_WEEKS / marginals['xER'][0]  # fewer ER is good
-    pitchers['xWH_score'] = - pitchers['xWH'] / REMAINING_WEEKS / marginals['xWH'][0]  # few WH is good
-    pitchers['xK_score'] = pitchers['xK'] / REMAINING_WEEKS / marginals['xK'][0]
+    for cat, _ in pitcher_categories_info['models'].iteritems():
+        print cat
 
-    pitchers['xER_score_per_week'] = - pitchers['xER_per_week'] / marginals['xER'][0]  # fewer ER is good
-    pitchers['xWH_score_per_week'] = - pitchers['xWH_per_week'] / marginals['xWH'][0]  # few WH is good
-    pitchers['xK_score_per_week'] = pitchers['xK_per_week'] / marginals['xK'][0]
+        x_0 = pitcher_categories_info['base_level'][cat]
 
-    pitchers['raw_score'] = pitchers['IP_score'] + pitchers['W_score'] + pitchers['SV_score'] + pitchers['xER_score'] + pitchers['xWH_score'] + pitchers['xK_score']
-    pitchers['ratios_score'] = pitchers['xER_score_per_week'] + pitchers['xWH_score_per_week'] + pitchers['xK_score_per_week']
+        if cat in ['ERA', 'K9']:
+            x_1 = (x_0 / 9 * team_IP_per_week + 1) / team_IP_per_week * 9
+        elif cat in ['WHIP']:
+            x_1 = (x_0 * team_IP_per_week + 1) / team_IP_per_week
+        else:
+            x_1 = x_0 + 1
 
-    pitchers = pitchers.sort_values('raw_score', ascending=False)
+        print x_0, x_1
+
+        x = pitcher_categories_info['models'][cat].predict_proba(numpy.array([x_0, x_1]).reshape(-1, 1))[:, 1]
+        pitcher_categories_info['p_added'][cat] = x[1] - x[0]
+
+    print pitcher_categories_info['p_added']
+
+    pitchers['W_per_week'] = pitchers['W'] / pitchers['weeks']
+    pitchers['SV_per_week'] = pitchers['SV'] / pitchers['weeks']
+    pitchers['ER_per_week'] = pitchers['ERA'] / 9 * pitchers['IP_per_week']
+    pitchers['WH_per_week'] = pitchers['WHIP'] * pitchers['IP_per_week']
+    pitchers['K_per_week'] = pitchers['K9'] / 9 * pitchers['IP_per_week']
+
+    pitchers['mIP_per_week'] = pitchers['IP_per_week'] - (pitcher_categories_info['base_level']['IP'] / N_PITCHERS)
+    pitchers['mW_per_week'] = pitchers['W_per_week'] - (pitcher_categories_info['base_level']['W'] / N_PITCHERS)
+    pitchers['mSV_per_week'] = pitchers['SV_per_week'] - (pitcher_categories_info['base_level']['SV'] / N_PITCHERS)
+
+    pitchers['mER_per_week'] = (pitchers['ERA'] - pitcher_categories_info['base_level']['ERA']) / 9 * pitchers['IP_per_week']  # use ERA over ER for more accuracy when IP is small
+    pitchers['mWH_per_week'] = (pitchers['WHIP'] - pitcher_categories_info['base_level']['WHIP']) * pitchers['IP_per_week']  # use WHIP over BB and H for more accuracy when IP is small
+    pitchers['mK_per_week'] = (pitchers['K9'] - pitcher_categories_info['base_level']['K9']) / 9 * pitchers['IP_per_week']
+
+    probability_key = 'p_added'
+
+    pitchers['IP_p_added_per_week'] = pitchers['mIP_per_week'] * pitcher_categories_info[probability_key]['IP']
+    pitchers['W_p_added_per_week'] = pitchers['mW_per_week'] * pitcher_categories_info[probability_key]['W']
+    pitchers['SV_p_added_per_week'] = pitchers['mSV_per_week'] * pitcher_categories_info[probability_key]['SV']
+    pitchers['ER_p_added_per_week'] = -1.0 * pitchers['mER_per_week'] * pitcher_categories_info[probability_key]['ERA']
+    pitchers['WH_p_added_per_week'] = -1.0 * pitchers['mWH_per_week'] * pitcher_categories_info[probability_key]['WHIP']
+    pitchers['K_p_added_per_week'] = pitchers['mK_per_week'] * pitcher_categories_info[probability_key]['K9']
+
+    pitchers['p_added_per_week'] = pitchers['IP_p_added_per_week'] + pitchers['W_p_added_per_week'] + pitchers['SV_p_added_per_week'] + pitchers['ER_p_added_per_week'] + pitchers['WH_p_added_per_week'] + pitchers['K_p_added_per_week']
+    pitchers['ratios_p_added_per_week'] = pitchers['ER_p_added_per_week'] + pitchers['WH_p_added_per_week'] + pitchers['K_p_added_per_week']
+
+    pitchers = pitchers.sort_values('p_added_per_week', ascending=False)
     pitchers = pitchers.reset_index(drop=True)
+
+    return pitchers
+
+
+def add_playing_time(pitchers):
+    """
+    Add pitchers' IP from the past 14 days
+
+    """
+    # start by calculating the number of games the team has played from the batter playing time data
+    batter_playing_time = pandas.read_csv('batter_playing_time.csv', encoding="utf-8-sig", error_bad_lines=False, dtype={'playerid': object})
+
+    batter_playing_time.rename(columns={'"Name"': "name", 'Name': "name", '2B': "D", '3B': "T"}, inplace=True)  # columns can't begin with numbers
+
+    team_games = batter_playing_time.groupby('Team', as_index=False).aggregate({'G': 'max'})
+    team_games.rename(columns={'G': 'team_G'}, inplace=True)
+
+    # load pitcher playing time
+    playing_time = pandas.read_csv('pitcher_playing_time.csv', encoding="utf-8-sig", error_bad_lines=False, dtype={'playerid': object})
+
+    playing_time.rename(columns={'"Name"': "name", 'Name': "name", 'K/9': "K9", 'SO': "K"}, inplace=True)
+
+    playing_time = playing_time.merge(team_games, on='Team')
+
+    # any pitcher that started a game counts as a SP
+    playing_time['SP'] = playing_time['GS'] > 0
+
+    # if SP, IP per week is based on IP per start, assuming 1 start a week
+    # if RP, IP per week is based on IP per team game, assuming 6 games a week
+    playing_time['l14_IP_per_week'] = (playing_time['IP'] / playing_time['GS']).where(playing_time['SP'], playing_time['IP'] / playing_time['team_G'] * 6)
+
+    pitchers = pitchers.merge(playing_time[['playerid', 'l14_IP_per_week']], how='left', on='playerid')
+    pitchers['l14_IP_per_week'] = pitchers['l14_IP_per_week'].fillna(0)
+
+    pitchers['is_RP'] = (pitchers['GS'] < 1)
+
+    pitchers['relief_IP'] = pitchers['G'] - pitchers['GS']  # assume relief appearances are for 1 IP
+
+    pitchers['IP_per_GS'] = (pitchers['IP'] - pitchers['relief_IP']) / pitchers['GS']
+
+    # default for relievers is 65 IP per season, 25 weeks
+    default_relief_workload = 65.0 / 25
+
+    # default for starters is 32 GS per season, 25 weeks
+    default_start_workload = 32.0 / 25
+
+    # number of weeks a pitcher is projected to pitch
+    pitchers['weeks'] = pitchers['relief_IP'] / default_relief_workload + pitchers['GS'] / default_start_workload
+
+    pitchers['IP_per_week'] = pitchers['l14_IP_per_week']
 
     return pitchers
 
@@ -166,26 +244,26 @@ def calculate_replacement_score(pitchers):
     replacement_level = {}
     rostered = N_PITCHERS * N_TEAMS
 
-    replacement_level['P'] = numpy.mean(pitchers.ix[rostered:(rostered + 2)]['raw_score'])
+    replacement_level['P'] = numpy.mean(pitchers.ix[rostered:(rostered + 2)]['p_added_per_week'])
 
-    pitchers['rep_score'] = replacement_level['P']
+    pitchers['rep_p_added_per_week'] = replacement_level['P']
 
     return pitchers
 
 
 def add_valuation(pitchers):
     """
-    Given the adjusted score, calculate the dollar value using a fixed batter / pitcher ratio
+    Given the adjusted win probability, calculate the dollar value using a fixed batter / pitcher ratio
 
     """
     pitcher_budget = 260 * N_TEAMS * (1 - BATTER_BUDGET_RATIO)
 
-    dollars_per_adj_score_flat = pitcher_budget / numpy.sum(pitchers.iloc[0:(N_PITCHERS * N_TEAMS)]['adj_score'])
-    print u"total pitcher value: {}".format(numpy.sum(pitchers.iloc[0:(N_PITCHERS * N_TEAMS)]['adj_score']))
+    dollars_per_adj_p_added_flat = pitcher_budget / numpy.sum(pitchers.iloc[0:(N_PITCHERS * N_TEAMS)]['adj_p_added_per_week'])
+    print u"total pitcher value: {}".format(numpy.sum(pitchers.iloc[0:(N_PITCHERS * N_TEAMS)]['adj_p_added_per_week']))
 
-    print u"$ per score (flat): {}".format(dollars_per_adj_score_flat)
+    print u"$ per win probability (flat): {}".format(dollars_per_adj_p_added_flat)
 
-    pitchers['valuation_flat'] = pitchers['adj_score'] * dollars_per_adj_score_flat
+    pitchers['valuation_flat'] = pitchers['adj_p_added_per_week'] * dollars_per_adj_p_added_flat
 
     return pitchers
 
@@ -205,16 +283,16 @@ def add_inflation(pitchers):
     keepers_salaries = pitchers['keeper_salary'].sum()
 
     inflation_pitcher_budget = pitcher_budget - keepers_salaries
-    print u"remaining batter budget: {}".format(inflation_pitcher_budget)
+    print u"remaining pitcher budget: {}".format(inflation_pitcher_budget)
 
     free_agents = pitchers.iloc[0:(N_PITCHERS * N_TEAMS)]
     free_agents = free_agents[free_agents['keeper_salary'].isnull()]
 
-    dollars_per_adj_score_inflation = inflation_pitcher_budget / numpy.sum(free_agents['adj_score'])
-    print u"$ per score with inflation: {}".format(dollars_per_adj_score_inflation)
-    print u"remaining batter value: {}".format(numpy.sum(free_agents['adj_score']))
+    dollars_per_adj_p_added_inflation = inflation_pitcher_budget / numpy.sum(free_agents['adj_p_added_per_week'])
+    print u"$ per win probability with inflation: {}".format(dollars_per_adj_p_added_inflation)
+    print u"remaining batter value: {}".format(numpy.sum(free_agents['adj_p_added_per_week']))
 
-    pitchers['valuation_inflation'] = pitchers['adj_score'] * dollars_per_adj_score_inflation
+    pitchers['valuation_inflation'] = pitchers['adj_p_added_per_week'] * dollars_per_adj_p_added_inflation
 
     return pitchers
 
