@@ -4,7 +4,7 @@
 
 These scripts help value and rank players in an ESPN head to head categories league. League settings are configurable, including the categories.
 
-How each category is valued is based on head to head results from previous weeks / seasons. The model uses a logistic regression to find the probability each additional unit (for example, an RBI) provides towards winning that category.
+How each category is valued is based on head to head results from previous weeks / seasons. The model uses a logistic regression to find the probability each additional stat (for example, an RBI) provides towards winning that category for the average team. (Where the average team is a .500 team in that category.)
 
 The category valuations are applied against rest-of-season projections from Fangraphs to calculate a cumulative winning probability added for the players.
 

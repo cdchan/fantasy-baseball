@@ -81,10 +81,6 @@ def main():
         'mW_per_week',
         ]
 
-    remaining_columns = [c for c in pitchers.columns if c not in columns]
-
-    columns += remaining_columns
-
     pitchers = pitchers.sort_values('p_added_per_week', ascending=False)
 
     pitchers.to_csv('pitcher_{:%Y%m%d}.csv'.format(datetime.datetime.today()), index=False, columns=columns)
@@ -122,6 +118,7 @@ def calculate_p_added():
         'IP': 0.5,
     }
 
+    # calculate what team stats are needed to have a 50% chance of winning the category (or whatever % is set in base_team_probabilities)
     pitcher_categories_info['base_level'] = {}
 
     for cat, lm in pitcher_categories_info['models'].iteritems():
@@ -131,8 +128,9 @@ def calculate_p_added():
 
     pitcher_categories_info['p_added_new'] = {}
 
-    team_IP_per_week = 21
+    team_IP_per_week = pitcher_categories_info['base_level']['IP']  # adjust if team strategy is different
 
+    # calculate how much win probability is added for an additional unit for each category
     for cat, _ in pitcher_categories_info['models'].iteritems():
         print cat
 
@@ -152,12 +150,14 @@ def calculate_p_added():
 
     print pitcher_categories_info['p_added']
 
+    # normalize pitcher production to a weekly basis
     pitchers['W_per_week'] = pitchers['W'] / pitchers['weeks']
     pitchers['SV_per_week'] = pitchers['SV'] / pitchers['weeks']
     pitchers['ER_per_week'] = pitchers['ERA'] / 9 * pitchers['IP_per_week']
     pitchers['WH_per_week'] = pitchers['WHIP'] * pitchers['IP_per_week']
     pitchers['K_per_week'] = pitchers['K9'] / 9 * pitchers['IP_per_week']
 
+    # calculate the marginal pitcher production over the base level
     pitchers['mIP_per_week'] = pitchers['IP_per_week'] - (pitcher_categories_info['base_level']['IP'] / N_PITCHERS)
     pitchers['mW_per_week'] = pitchers['W_per_week'] - (pitcher_categories_info['base_level']['W'] / N_PITCHERS)
     pitchers['mSV_per_week'] = pitchers['SV_per_week'] - (pitcher_categories_info['base_level']['SV'] / N_PITCHERS)
@@ -175,7 +175,9 @@ def calculate_p_added():
     pitchers['WH_p_added_per_week'] = -1.0 * pitchers['mWH_per_week'] * pitcher_categories_info[probability_key]['WHIP']
     pitchers['K_p_added_per_week'] = pitchers['mK_per_week'] * pitcher_categories_info[probability_key]['K9']
 
+    # cumulative win probability added across all categories
     pitchers['p_added_per_week'] = pitchers['IP_p_added_per_week'] + pitchers['W_p_added_per_week'] + pitchers['SV_p_added_per_week'] + pitchers['ER_p_added_per_week'] + pitchers['WH_p_added_per_week'] + pitchers['K_p_added_per_week']
+    # win probability added for only the ratio categories
     pitchers['ratios_p_added_per_week'] = pitchers['ER_p_added_per_week'] + pitchers['WH_p_added_per_week'] + pitchers['K_p_added_per_week']
 
     pitchers = pitchers.sort_values('p_added_per_week', ascending=False)
