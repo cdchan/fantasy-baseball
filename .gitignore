@@ -6,5 +6,10 @@ config.py
 *.csv
 *.json
 
+# research
+notebooks/
+
 # python files
 *.pyc
+__*.py
+

@@ -11,8 +11,15 @@ The category valuations are applied against rest-of-season projections from Fang
 ## Before each season
 
 1. Update configuration file by making a copy of config.py.sample, renaming to config.py, and filling out the configuration.
+    * Update:
+        * `CURRENT_YEAR`
+        * `season_final_day`
+        * `BATTER_BUDGET_RATIO`
+            * Traditionally, this is set to around 0.66 (i.e. 33% to pitchers)
+            * In 2018, the actual ratio was 0.68
     * This includes Fangraphs form data and ESPN cookies.
     * Fangraphs form data should be saved as `config/viewstate.data` and `config/viewstate-leaderboard.data`.
+        * Note: if this is too time-consuming, just save response data into the projections directory.
 
 ## Preparing for a draft
 
@@ -20,6 +27,11 @@ The category valuations are applied against rest-of-season projections from Fang
     * Scrape the pre-season projections from Fangraphs. The projection system used is configurable.
 1. `scrape_espn_eligibilities.py --draft`
     * Scrape positional eligibilities for players from ESPN. This is needed for positional adjustments.
+1. `map_players.py`
+    * TODO: update this script
+1. `python batter_valuation.py --draft`
+1. `python pitcher_valuation.py --draft`
+
 
 ## Each week / scoring period
 
@@ -29,7 +41,8 @@ To gather fresh data:
     * Scrape the number of PA / IP for each player in the past 14 days.
 1. `scrape_fangraphs.py`
     * Scrape the rest-of-season projections from Fangraphs. The projection system used is configurable.
-1. scrape_eligibilities.py
+1. `scrape_eligibilities.py`
+    * TODO: out of date, needs to be fixed
     * Scrape positional eligibilities for players from ESPN. This is needed for positional adjustments.
 1. scrape_rosters.py
     * Scrape the current rosters for each team from ESPN.
