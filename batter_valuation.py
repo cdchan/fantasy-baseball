@@ -11,9 +11,10 @@ import pandas
 
 from sklearn.externals import joblib
 
-from utils import load_mapping, load_fangraphs_batter_projections, load_batter_positions, load_keepers, add_espn_auction_values, add_roster_state
-
 from config import REMAINING_WEEKS, N_BATTERS, N_TEAMS, BATTER_BUDGET_RATIO
+from utils import load_mapping, load_fangraphs_batter_projections, load_espn_positions, load_keepers, add_espn_auction_values, add_roster_state
+
+team_PA_per_week = 300  # assume the team gets 300 PA a week
 
 
 def main():
@@ -21,8 +22,13 @@ def main():
     parser.add_argument("--draft", action="store_true", help="prepare for auction draft")
     args = parser.parse_args()
 
+    if args.draft:
+        projection_type = "fangraphsdc"
+    else:
+        projection_type = "steamer600u"
+
     # calculate win probability added
-    batters = calculate_p_added()
+    batters = calculate_p_added(projection_type, args.draft)
 
     batters = calculate_replacement_score(batters)
 
@@ -41,18 +47,20 @@ def main():
         batters = add_espn_auction_values(batters)
 
         columns = [
-            'name',
+            'fg_name',
             'Team',
             'valuation_inflation',
             'espn_value',
             'valuation_flat',
+            'price',
             'keeper_salary',
+            'teamid',
         ]
     else:
         batters = add_roster_state(batters)
 
         columns = [
-            'name',
+            'fg_name',
             'Team',
             'valuation_flat',
             'fantasy_team_id',
@@ -70,24 +78,28 @@ def main():
         'RBI_p_added_per_week',
         'HR_p_added_per_week',
         'SB_p_added_per_week',
+        'TB_p_added_per_week',
         'OBP_p_added_per_week',
         'R_per_week',
         'RBI_per_week',
         'HR_per_week',
         'SB_per_week',
+        'TB_per_week',
         'OB_per_week',
+        'mOB_per_week',
         'PA',
         'HR',
         'SB',
+        'TB',
         'R',
         'RBI',
         'AVG',
         'OBP',
         'SLG',
         'C',
-        'B1',
-        'B2',
-        'B3',
+        '1B',
+        '2B',
+        '3B',
         'SS',
         'OF',
         'MI',
@@ -96,45 +108,52 @@ def main():
 
     batters.sort_values('adj_p_added_per_week', ascending=False, inplace=True)
 
-    batters.to_csv('batter_{:%Y%m%d}.csv'.format(datetime.datetime.today()), index=False, columns=columns, encoding='utf8')
+    batters.to_csv('data/historical/batter_{:%Y-%m-%d}.csv'.format(datetime.datetime.today()), index=False, columns=columns, encoding='utf8')
+    batters.to_csv('batter_valuation.csv'.format(datetime.datetime.today()), index=False, columns=columns, encoding='utf8')
 
 
-def calculate_p_added():
+def calculate_p_added(projection_type, draft=False):
     """
-    Calculate probability added for battesr from projected stats
+    Calculate probability added for batters from projected stats
 
     Use the marginal win probability over mean of each stat
 
     """
     mapping = load_mapping()
 
-    projections = load_fangraphs_batter_projections('steamer600u')
+    projections = load_fangraphs_batter_projections(projection_type)
     projections = projections.query('PA > 20').copy()  # only consider batters projected for more than 20 PA
     projections = projections[projections['Team'].notnull()]  # remove batters with no team
 
-    positions = load_batter_positions()
+    positions = load_espn_positions()
     positions = correct_batter_positions(positions)  # account for any upcoming player position changes
 
-    batters = projections.merge(mapping[['mlbam_id', 'playerid', 'espn_id']], how='left', on='playerid')
+    batters = projections.merge(mapping[['mlb_id', 'fg_id', 'espn_id']], how='left', on='fg_id')
     batters = batters.merge(positions, how='left', on='espn_id')
 
-    batter_categories_info = joblib.load('batters.pkl')  # load results of the logistic regression
+    batter_categories_info = joblib.load('data/batters.pickle')  # load results of the logistic regression
+    # TODO fix path to pickle
 
-    batters = add_playing_time(batters)  # add in the latest playing time for batters
+    if draft:
+        batters['PA_per_week'] = batters['PA'] / REMAINING_WEEKS
+    else:
+        batters = add_playing_time(batters)  # add in the latest playing time for batters
 
     batters['OB'] = batters['OBP'] * batters['PA']
+    batters['TB'] = batters['SLG'] * batters['AB']
 
     # calculate projected stats per week
     batters['R_per_week'] = batters['R'] / batters['PA'] * batters['PA_per_week']
     batters['RBI_per_week'] = batters['RBI'] / batters['PA'] * batters['PA_per_week']
     batters['HR_per_week'] = batters['HR'] / batters['PA'] * batters['PA_per_week']
     batters['SB_per_week'] = batters['SB'] / batters['PA'] * batters['PA_per_week']
+    batters['TB_per_week'] = batters['TB'] / batters['PA'] * batters['PA_per_week']
     batters['OB_per_week'] = batters['OB'] / batters['PA'] * batters['PA_per_week']
 
     batter_categories_info['rep_level'] = {}
     manual_replacement_levels = {}  # replacement level defaults to 50% probability of winning, but can manually override here
 
-    for cat, lm in batter_categories_info['models'].iteritems():
+    for cat, lm in batter_categories_info['models'].items():
         if cat in manual_replacement_levels:
             rep_level = (numpy.log(-manual_replacement_levels[cat] / (manual_replacement_levels[cat] - 1)) - lm.intercept_[0]) / lm.coef_[0][0]
         else:
@@ -142,14 +161,16 @@ def calculate_p_added():
 
         batter_categories_info['rep_level'][cat] = rep_level
 
+    # no historical TB information yet
+    batter_categories_info['rep_level']['TB'] = batter_categories_info['rep_level']['HR'] * 12.0
+
     batter_categories_info['rep_level']['OBP'] = batter_categories_info['rep_level']['OBP_big'] / 1000.0  # need to convert out of percentage points to avoid numerical issues
 
+    print(batter_categories_info['rep_level'])
     batter_categories_info['p_added'] = {}
 
-    team_PA_per_week = 300  # assume the team gets 300 PA a week
-
-    for cat, _ in batter_categories_info['models'].iteritems():
-        print cat
+    for cat, _ in batter_categories_info['models'].items():
+        print(cat)
 
         if cat == 'OBP_big':
             x_0 = batter_categories_info['rep_level'][cat]
@@ -159,20 +180,23 @@ def calculate_p_added():
             x_1 = x_0 + 1
 
         # what is the 50% of winning for each category, and what is 1 additional of that unit?
-        print x_0, x_1
+        print(x_0, x_1)
 
         # using logistic regression, what is the win probability added for 1 additional unit of each category
         x = batter_categories_info['models'][cat].predict_proba(numpy.array([x_0, x_1]).reshape(-1, 1))[:, 1]
         batter_categories_info['p_added'][cat] = x[1] - x[0]
 
+    batter_categories_info['p_added']['TB'] = batter_categories_info['p_added']['HR'] / 12.0
+
     # print out the win probability added
-    print batter_categories_info['p_added']
+    print(batter_categories_info['p_added'])
 
     # calculate the marginal units per week over the "average" player
     batters['mR_per_week'] = batters['R_per_week'] - batter_categories_info['rep_level']['R'] / N_BATTERS
     batters['mRBI_per_week'] = batters['RBI_per_week'] - batter_categories_info['rep_level']['RBI'] / N_BATTERS
     batters['mHR_per_week'] = batters['HR_per_week'] - batter_categories_info['rep_level']['HR'] / N_BATTERS
     batters['mSB_per_week'] = batters['SB_per_week'] - batter_categories_info['rep_level']['SB'] / N_BATTERS
+    batters['mTB_per_week'] = batters['TB_per_week'] - batter_categories_info['rep_level']['TB'] / N_BATTERS
     batters['mOB_per_week'] = batters['OB_per_week'] - (batter_categories_info['rep_level']['OBP'] * batters['PA_per_week'])
 
     # convert the marginal units per week to win probability
@@ -181,10 +205,11 @@ def calculate_p_added():
     batters['RBI_p_added_per_week'] = batters['mRBI_per_week'] * batter_categories_info[probability_key]['RBI']
     batters['HR_p_added_per_week'] = batters['mHR_per_week'] * batter_categories_info[probability_key]['HR']
     batters['SB_p_added_per_week'] = batters['mSB_per_week'] * batter_categories_info[probability_key]['SB']
+    batters['TB_p_added_per_week'] = batters['mTB_per_week'] * batter_categories_info[probability_key]['TB']
     batters['OBP_p_added_per_week'] = batters['mOB_per_week'] *  batter_categories_info[probability_key]['OBP_big']
 
     # overall win probability added
-    batters['p_added_per_week'] = batters['R_p_added_per_week'] + batters['RBI_p_added_per_week'] + batters['HR_p_added_per_week'] + batters['SB_p_added_per_week'] + batters['OBP_p_added_per_week']
+    batters['p_added_per_week'] = batters['R_p_added_per_week'] + batters['RBI_p_added_per_week'] + batters['HR_p_added_per_week'] + batters['SB_p_added_per_week'] + batters['TB_p_added_per_week'] + batters['OBP_p_added_per_week']
 
     batters = batters.sort_values('p_added_per_week', ascending=False)
     batters = batters.reset_index(drop=True)
@@ -247,10 +272,10 @@ def calculate_replacement_score(batters):
     # number of batters needed for each position
     batter_positions = [
         {'name': 'C', 'n': 2},
-        {'name': 'B3', 'n': 1},
+        {'name': '3B', 'n': 1},
         {'name': 'SS', 'n': 1},
-        {'name': 'B1', 'n': 1},
-        {'name': 'B2', 'n': 1},
+        {'name': '1B', 'n': 1},
+        {'name': '2B', 'n': 1},
         {'name': 'OF', 'n': 5},
     ]
 
@@ -262,9 +287,9 @@ def calculate_replacement_score(batters):
         ].index[0:(N_TEAMS * position['n'])], 'position'] = position['name']
 
     # set MI
-    batters.loc[batters[batters['position'].isnull() & ((batters['B2'] == 1) | (batters['SS'] == 1))].index[0:12], 'position'] = 'MI'
+    batters.loc[batters[batters['position'].isnull() & (batters['MI'] == 1)].index[0:12], 'position'] = 'MI'
     # set CI
-    batters.loc[batters[batters['position'].isnull() & ((batters['B1'] == 1) | (batters['B3'] == 1))].index[0:12], 'position'] = 'CI'
+    batters.loc[batters[batters['position'].isnull() & (batters['CI'] == 1)].index[0:12], 'position'] = 'CI'
     # set UTIL
     batters.loc[batters[batters['position'].isnull()].index[0:12], 'position'] = 'UTIL'
 
@@ -296,8 +321,8 @@ def calculate_replacement_score(batters):
     # ].index[0:2], 'raw_score'])
 
     # print replacement level win probability for each position
-    for position, rep_level in sorted(replacement_level.iteritems(), key=lambda (k, v): v):
-        print position, rep_level
+    for position, rep_level in [(k, replacement_level[k]) for k in sorted(replacement_level, key=replacement_level.get)]:
+        print(position, rep_level)
 
     return batters
 
@@ -310,9 +335,9 @@ def add_valuation(batters):
     batter_budget = 260 * N_TEAMS * BATTER_BUDGET_RATIO
 
     dollars_per_adj_p_added_flat = batter_budget / numpy.sum(batters.iloc[0:(N_BATTERS * N_TEAMS)]['adj_p_added_per_week'])
-    print u"total batter value: {}".format(numpy.sum(batters.iloc[0:(N_BATTERS * N_TEAMS)]['adj_p_added_per_week']))
+    print(u"total batter value: {}".format(numpy.sum(batters.iloc[0:(N_BATTERS * N_TEAMS)]['adj_p_added_per_week'])))
 
-    print u"$ per 10% win probability added (flat): {}".format(dollars_per_adj_p_added_flat / 10.0)
+    print(u"$ per 10% win probability added (flat): {}".format(dollars_per_adj_p_added_flat / 10.0))
 
     batters['valuation_flat'] = batters['adj_p_added_per_week'] * dollars_per_adj_p_added_flat
 
@@ -327,21 +352,23 @@ def add_inflation(batters):
 
     """
     keepers = load_keepers()
+    # last_year_auction = load_previous_prices()
 
-    batters = batters.merge(keepers, how='left', on='mlbam_id')
+    batters = batters.merge(keepers, how='left', on='mlb_id')
+    # batters = batters.merge(last_year_auction, how='left', on='espn_id')
 
     batter_budget = 260 * N_TEAMS * BATTER_BUDGET_RATIO
     keepers_salaries = batters['keeper_salary'].sum()
 
     inflation_batter_budget = batter_budget - keepers_salaries
-    print u"remaining batter budget: {}".format(inflation_batter_budget)
+    print(u"remaining batter budget: {}".format(inflation_batter_budget))
 
     free_agents = batters.iloc[0:(N_BATTERS * N_TEAMS)]
     free_agents = free_agents[free_agents['keeper_salary'].isnull()]
 
     dollars_per_adj_score_inflation = inflation_batter_budget / numpy.sum(free_agents['adj_p_added_per_week'])
-    print u"$ per score with inflation: {}".format(dollars_per_adj_score_inflation)
-    print u"remaining batter value: {}".format(numpy.sum(free_agents['adj_p_added_per_week']))
+    print(u"$ per score with inflation: {}".format(dollars_per_adj_score_inflation))
+    print(u"remaining batter value: {}".format(numpy.sum(free_agents['adj_p_added_per_week'])))
 
     batters['valuation_inflation'] = batters['adj_p_added_per_week'] * dollars_per_adj_score_inflation
 

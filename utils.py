@@ -171,11 +171,22 @@ def load_keepers():
     Load keeper salaries
 
     """
-    keepers = pandas.read_csv(os.path.join(WORKING_DIRECTORY, 'keepers.csv'), na_values='NA', dtype={'mlbam_id': object})
+    keepers = pandas.read_csv(os.path.join(DATA_DIRECTORY, 'keepers.csv'), na_values='NA', dtype={'mlb_id': object}, comment='#')
 
     del keepers['name']
 
     return keepers
+
+
+def load_previous_prices():
+    """
+    Load auction prices from last year
+    """
+    auction = pandas.read_csv(os.path.join(DATA_DIRECTORY, 'historical/auction_{}.csv'.format(CURRENT_YEAR - 1)), na_values='NA', dtype={'playerid': object})
+
+    auction.rename(columns={'playerid': 'espn_fantasy_id'}, inplace=True)
+
+    return auction[['espn_fantasy_id', 'price', 'teamid']]
 
 
 def load_espn_auction_values():
@@ -183,7 +194,7 @@ def load_espn_auction_values():
     Load ESPN auction values
 
     """
-    espn_values = pandas.read_csv(os.path.join(WORKING_DIRECTORY, 'espn_values.csv'), na_values='NA', dtype={'espn_id': object})
+    espn_values = pandas.read_csv(os.path.join(DATA_DIRECTORY, 'espn_values.csv'), na_values='NA', dtype={'espn_id': object})
 
     return espn_values
 

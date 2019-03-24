@@ -8,13 +8,13 @@ import datetime
 
 import numpy
 import pandas
-
 from sklearn.externals import joblib
 
-
-from utils import load_mapping, load_fangraphs_pitcher_projections, load_pitcher_positions, load_keepers, add_espn_auction_values, add_roster_state
-
 from config import REMAINING_WEEKS, N_PITCHERS, N_TEAMS, BATTER_BUDGET_RATIO
+from utils import load_mapping, load_fangraphs_pitcher_projections, load_espn_positions, load_keepers, add_espn_auction_values, add_roster_state
+
+
+MIN_IP = 1
 
 
 def main():
@@ -22,8 +22,13 @@ def main():
     parser.add_argument("--draft", action="store_true", help="prepare for auction draft")
     args = parser.parse_args()
 
+    if args.draft:
+        projection_type = "fangraphsdc"
+    else:
+        projection_type = "steamer600u"
+
     # calculate win probability added
-    pitchers = calculate_p_added()
+    pitchers = calculate_p_added(projection_type, args.draft)
 
     pitchers = calculate_replacement_score(pitchers)
 
@@ -40,7 +45,7 @@ def main():
         pitchers = add_espn_auction_values(pitchers)
 
         columns = [
-            'name',
+            'fg_name',
             'Team',
             'valuation_inflation',
             'espn_value',
@@ -51,7 +56,7 @@ def main():
         pitchers = add_roster_state(pitchers)
 
         columns = [
-            'name',
+            'fg_name',
             'Team',
             'valuation_flat',
             'fantasy_team_id',
@@ -83,10 +88,11 @@ def main():
 
     pitchers = pitchers.sort_values('p_added_per_week', ascending=False)
 
-    pitchers.to_csv('pitcher_{:%Y%m%d}.csv'.format(datetime.datetime.today()), index=False, columns=columns)
+    pitchers.to_csv('data/historical/pitcher_{:%Y-%m-%d}.csv'.format(datetime.datetime.today()), index=False, columns=columns, encoding='utf8')
+    pitchers.to_csv('pitcher_valuation.csv', index=False, columns=columns, encoding='utf8')
 
 
-def calculate_p_added():
+def calculate_p_added(projection_type, draft=False):
     """
     Calculate probability added for pitchers from projected stats
 
@@ -95,19 +101,23 @@ def calculate_p_added():
     """
     mapping = load_mapping()
 
-    projections = load_fangraphs_pitcher_projections('steamer600u')
-    projections = projections.query('IP > 1').copy()  # only consider pitchers projected for more than 1 IP
-    projections = projections[projections['Team'].notnull()]  # remove pitchers with no team
+    projections = load_fangraphs_pitcher_projections(projection_type)
+    projections = projections[projections['IP'] > MIN_IP].copy()  # only consider pitchers projected for more than MIN_IP IP
+    # projections = projections[projections['Team'].notnull()]  # remove pitchers with no team
 
-    positions = load_pitcher_positions()
+    positions = load_espn_positions()
     # positions = correct_pitcher_positions(positions)
 
-    pitchers = projections.merge(mapping[['mlbam_id', 'playerid', 'espn_id']], how='left', on='playerid')
+    pitchers = projections.merge(mapping[['mlb_id', 'fg_id', 'espn_id']], how='left', on='fg_id')
     pitchers = pitchers.merge(positions, how='left', on='espn_id')
 
-    pitchers = add_playing_time(pitchers)  # add in the latest playing time for pitchers
+    if draft:
+        pitchers['IP_per_week'] = pitchers['IP'] / REMAINING_WEEKS
+        pitchers['weeks'] = REMAINING_WEEKS
+    else:
+        pitchers = add_playing_time(pitchers)  # add in the latest playing time for pitchers
 
-    pitcher_categories_info = joblib.load('pitchers.pkl')  # load results of the logistic regression
+    pitcher_categories_info = joblib.load('data/pitchers.pickle')  # load results of the logistic regression
 
     base_team_probabilities = {
         'SV': 0.5,
@@ -121,7 +131,7 @@ def calculate_p_added():
     # calculate what team stats are needed to have a 50% chance of winning the category (or whatever % is set in base_team_probabilities)
     pitcher_categories_info['base_level'] = {}
 
-    for cat, lm in pitcher_categories_info['models'].iteritems():
+    for cat, lm in pitcher_categories_info['models'].items():
         base_level = (numpy.log(-base_team_probabilities[cat] / (base_team_probabilities[cat] - 1)) - lm.intercept_[0]) / lm.coef_[0][0]
 
         pitcher_categories_info['base_level'][cat] = base_level
@@ -131,8 +141,8 @@ def calculate_p_added():
     team_IP_per_week = pitcher_categories_info['base_level']['IP']  # adjust if team strategy is different
 
     # calculate how much win probability is added for an additional unit for each category
-    for cat, _ in pitcher_categories_info['models'].iteritems():
-        print cat
+    for cat, _ in pitcher_categories_info['models'].items():
+        print(cat)
 
         x_0 = pitcher_categories_info['base_level'][cat]
 
@@ -143,12 +153,12 @@ def calculate_p_added():
         else:
             x_1 = x_0 + 1
 
-        print x_0, x_1
+        print(x_0, x_1)
 
         x = pitcher_categories_info['models'][cat].predict_proba(numpy.array([x_0, x_1]).reshape(-1, 1))[:, 1]
         pitcher_categories_info['p_added'][cat] = x[1] - x[0]
 
-    print pitcher_categories_info['p_added']
+    print(pitcher_categories_info['p_added'])
 
     # normalize pitcher production to a weekly basis
     pitchers['W_per_week'] = pitchers['W'] / pitchers['weeks']
@@ -261,9 +271,9 @@ def add_valuation(pitchers):
     pitcher_budget = 260 * N_TEAMS * (1 - BATTER_BUDGET_RATIO)
 
     dollars_per_adj_p_added_flat = pitcher_budget / numpy.sum(pitchers.iloc[0:(N_PITCHERS * N_TEAMS)]['adj_p_added_per_week'])
-    print u"total pitcher value: {}".format(numpy.sum(pitchers.iloc[0:(N_PITCHERS * N_TEAMS)]['adj_p_added_per_week']))
+    print(u"total pitcher value: {}".format(numpy.sum(pitchers.iloc[0:(N_PITCHERS * N_TEAMS)]['adj_p_added_per_week'])))
 
-    print u"$ per win probability (flat): {}".format(dollars_per_adj_p_added_flat)
+    print(u"$ per win probability (flat): {}".format(dollars_per_adj_p_added_flat))
 
     pitchers['valuation_flat'] = pitchers['adj_p_added_per_week'] * dollars_per_adj_p_added_flat
 
@@ -279,20 +289,20 @@ def add_inflation(pitchers):
     """
     keepers = load_keepers()
 
-    pitchers = pitchers.merge(keepers, how='left', on='mlbam_id')
+    pitchers = pitchers.merge(keepers, how='left', on='mlb_id')
 
     pitcher_budget = 260 * N_TEAMS * (1 - BATTER_BUDGET_RATIO)
     keepers_salaries = pitchers['keeper_salary'].sum()
 
     inflation_pitcher_budget = pitcher_budget - keepers_salaries
-    print u"remaining pitcher budget: {}".format(inflation_pitcher_budget)
+    print(u"remaining pitcher budget: {}".format(inflation_pitcher_budget))
 
     free_agents = pitchers.iloc[0:(N_PITCHERS * N_TEAMS)]
     free_agents = free_agents[free_agents['keeper_salary'].isnull()]
 
     dollars_per_adj_p_added_inflation = inflation_pitcher_budget / numpy.sum(free_agents['adj_p_added_per_week'])
-    print u"$ per win probability with inflation: {}".format(dollars_per_adj_p_added_inflation)
-    print u"remaining batter value: {}".format(numpy.sum(free_agents['adj_p_added_per_week']))
+    print(u"$ per win probability with inflation: {}".format(dollars_per_adj_p_added_inflation))
+    print(u"remaining pitcher value: {}".format(numpy.sum(free_agents['adj_p_added_per_week'])))
 
     pitchers['valuation_inflation'] = pitchers['adj_p_added_per_week'] * dollars_per_adj_p_added_inflation
 
