@@ -4,6 +4,7 @@ config.py
 
 # data files
 *.csv
+*.json
 
 # python files
 *.pyc

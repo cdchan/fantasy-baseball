@@ -18,6 +18,8 @@ The category valuations are applied against rest-of-season projections from Fang
 
 1. `scrape_fangraphs.py --draft`
     * Scrape the pre-season projections from Fangraphs. The projection system used is configurable.
+1. `scrape_espn_eligibilities.py --draft`
+    * Scrape positional eligibilities for players from ESPN. This is needed for positional adjustments.
 
 ## Each week / scoring period
 
@@ -25,8 +27,8 @@ To gather fresh data:
 
 1. scrape_playing_time.py
     * Scrape the number of PA / IP for each player in the past 14 days.
-1. scrape_steamer.py
-    * Scrape the rest-of-season / pre-season projections from Fangraphs. The projection system used is configurable.
+1. `scrape_fangraphs.py`
+    * Scrape the rest-of-season projections from Fangraphs. The projection system used is configurable.
 1. scrape_eligibilities.py
     * Scrape positional eligibilities for players from ESPN. This is needed for positional adjustments.
 1. scrape_rosters.py
