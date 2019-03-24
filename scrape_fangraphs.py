@@ -1,6 +1,5 @@
 """
 Scrape Fangraphs Depth Charts projections
-
 """
 
 import argparse
@@ -26,8 +25,8 @@ def main():
     for projection_type in projection_types:
         # save projections for current and historical usage
         filenames = [
-            'historical/{}_{}_{:%Y%m%d}.csv',
-            '{}_{}.csv'
+            'data/projections/{}_{}_{:%Y-%m-%d}.csv',
+            'data/projections/{}_{}.csv'
         ]
 
         params = {
@@ -54,7 +53,7 @@ def write_csvs(r, projection_type, player_type, filenames):
 
     """
     for filename in filenames:
-        with open(filename.format(projection_type, player_type, datetime.datetime.today()), 'w') as output_file:
+        with open(filename.format(projection_type, player_type, datetime.datetime.today()), 'wb') as output_file:
             output_file.write(r.text[1:].encode('utf8'))  # remove the first 3 characters which are BOM
 
 

@@ -1,0 +1,9 @@
+# personal configuration
+config.py
+*.data
+
+# data files
+*.csv
+
+# python files
+*.pyc

@@ -10,8 +10,14 @@ The category valuations are applied against rest-of-season projections from Fang
 
 ## Before each season
 
-1. Update configuration file by making a copy of config.py.sample and renaming to config.py.
+1. Update configuration file by making a copy of config.py.sample, renaming to config.py, and filling out the configuration.
     * This includes Fangraphs form data and ESPN cookies.
+    * Fangraphs form data should be saved as `config/viewstate.data` and `config/viewstate-leaderboard.data`.
+
+## Preparing for a draft
+
+1. `scrape_fangraphs.py --draft`
+    * Scrape the pre-season projections from Fangraphs. The projection system used is configurable.
 
 ## Each week / scoring period
 
@@ -39,3 +45,4 @@ To value players:
 
 1. batter_valuation.py
 1. pitcher_valuation.py
+
