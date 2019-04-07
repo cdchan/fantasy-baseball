@@ -67,3 +67,20 @@ for x in ESPN_COOKIE.split(';'):
 
 espn_session = requests.Session()
 espn_session.cookies = requests.cookies.cookiejar_from_dict(cookie_dict)
+
+#####
+# Yahoo settomgs
+
+YAHOO_CLIENT_ID = ''
+YAHOO_CLIENT_SECRET = ''
+
+yahoo_access_token = ''
+# go through authorization flow to get refresh token
+yahoo_refresh_token = ''
+
+# ids for identify league for Yahoo API
+# SPORT_ID is the season of fantasy baseball (Yahoo refers to this as the game id)
+# find this through https://fantasysports.yahooapis.com/fantasy/v2/game/mlb
+YAHOO_SPORT_ID = 388  # 2019 fantasy baseball
+# LEAGUE_ID is the id for your league
+YAHOO_LEAGUE_ID = 0  # replace with your league
