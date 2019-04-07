@@ -16,19 +16,30 @@ from utils import load_mapping, load_fangraphs_batter_projections, load_espn_pos
 
 team_PA_per_week = 300  # assume the team gets 300 PA a week
 
+# number of batters needed for each position
+batter_positions = [
+    {'name': 'C', 'n': 2},
+    {'name': '1B', 'n': 1},
+    {'name': 'OF', 'n': 5},
+    {'name': '2B', 'n': 1},
+    {'name': 'SS', 'n': 1},
+    {'name': '3B', 'n': 1},
+]
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--draft", action="store_true", help="prepare for auction draft")
+    parser.add_argument("--l14pt", action="store_true", help="use last 14 days of playing time")
+    parser.add_argument("--projection", default="rfangraphsdc", help="projection system to use, choices are rfangraphs / steamer600u")
     args = parser.parse_args()
 
     if args.draft:
         projection_type = "fangraphsdc"
     else:
-        projection_type = "steamer600u"
+        projection_type = args.projection
 
     # calculate win probability added
-    batters = calculate_p_added(projection_type, args.draft)
+    batters = calculate_p_added(projection_type, args.draft, args.l14pt)
 
     batters = calculate_replacement_score(batters)
 
@@ -39,6 +50,12 @@ def main():
 
     batters = add_valuation(batters)
 
+    columns = [
+        'fg_name',
+        'Team',
+        'PA',
+    ]
+
     if args.draft:
         # draft valuations include extra information
         # e.g. what the ESPN auction value is
@@ -46,31 +63,37 @@ def main():
 
         batters = add_espn_auction_values(batters)
 
-        columns = [
-            'fg_name',
-            'Team',
+        positions = ['C', 'SS', '2B', 'OF', '1B', '3B']
+
+        batters['all_elig'] = ''
+        for position in positions:
+            batters['all_elig'] += numpy.where((batters[position] == 1) & (batters['position'] != position), position + ',', '')
+        batters['all_elig'] = batters['all_elig'].str[:-1]
+
+        del batters['fantasy_team_id']
+
+        batters = add_roster_state(batters)
+        print(batters.columns)
+
+        columns += [
             'valuation_inflation',
             'espn_value',
-            'valuation_flat',
-            'price',
             'keeper_salary',
-            'teamid',
+            'all_elig',
+            'fantasy_team_id',
         ]
     else:
         batters = add_roster_state(batters)
 
-        columns = [
-            'fg_name',
-            'Team',
+        columns += [
             'valuation_flat',
             'fantasy_team_id',
         ]
 
     columns += [
         'position',
-        'p_added_per_week',
         'adj_p_added_per_week',
-        'price',
+        'p_added_per_week',
         'PA_per_week',
         'l14_G',
         # 'PR15', 'PR2018', 'pct_own',
@@ -108,11 +131,11 @@ def main():
 
     batters.sort_values('adj_p_added_per_week', ascending=False, inplace=True)
 
-    batters.to_csv('data/historical/batter_{:%Y-%m-%d}.csv'.format(datetime.datetime.today()), index=False, columns=columns, encoding='utf8')
-    batters.to_csv('batter_valuation.csv'.format(datetime.datetime.today()), index=False, columns=columns, encoding='utf8')
+    batters.to_csv('data/historical/batter_{:%Y-%m-%d}.csv'.format(datetime.datetime.today()), index=False, columns=columns, encoding='utf8', float_format='%.2f')
+    batters.to_csv('batter_valuation.csv', index=False, columns=columns, encoding='utf8', float_format='%.2f')
 
 
-def calculate_p_added(projection_type, draft=False):
+def calculate_p_added(projection_type, draft=False, l14pt=False):
     """
     Calculate probability added for batters from projected stats
 
@@ -131,13 +154,13 @@ def calculate_p_added(projection_type, draft=False):
     batters = projections.merge(mapping[['mlb_id', 'fg_id', 'espn_id']], how='left', on='fg_id')
     batters = batters.merge(positions, how='left', on='espn_id')
 
-    batter_categories_info = joblib.load('data/batters.pickle')  # load results of the logistic regression
+    batter_categories_info = joblib.load('league_data/batters.pickle')  # load results of the logistic regression
     # TODO fix path to pickle
 
-    if draft:
-        batters['PA_per_week'] = batters['PA'] / REMAINING_WEEKS
-    else:
+    if l14pt:
         batters = add_playing_time(batters)  # add in the latest playing time for batters
+    else:
+        batters['PA_per_week'] = batters['PA'] / REMAINING_WEEKS
 
     batters['OB'] = batters['OBP'] * batters['PA']
     batters['TB'] = batters['SLG'] * batters['AB']
@@ -268,16 +291,6 @@ def calculate_replacement_score(batters):
 
     """
     batters = batters.sort_values('p_added_per_week', ascending=False)
-
-    # number of batters needed for each position
-    batter_positions = [
-        {'name': 'C', 'n': 2},
-        {'name': '3B', 'n': 1},
-        {'name': 'SS', 'n': 1},
-        {'name': '1B', 'n': 1},
-        {'name': '2B', 'n': 1},
-        {'name': 'OF', 'n': 5},
-    ]
 
     batters['position'] = None
     for position in batter_positions:

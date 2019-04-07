@@ -20,15 +20,17 @@ MIN_IP = 1
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--draft", action="store_true", help="prepare for auction draft")
+    parser.add_argument("-l14pt", action="store_true", help="use last 14 days of playing time")
+    parser.add_argument("--projection", default="rfangraphsdc", help="projection system to use, choices are rfangraphs / steamer600u")
     args = parser.parse_args()
 
     if args.draft:
         projection_type = "fangraphsdc"
     else:
-        projection_type = "steamer600u"
+        projection_type = args.projection
 
     # calculate win probability added
-    pitchers = calculate_p_added(projection_type, args.draft)
+    pitchers = calculate_p_added(projection_type, args.draft, args.l14pt)
 
     pitchers = calculate_replacement_score(pitchers)
 
@@ -44,13 +46,17 @@ def main():
 
         pitchers = add_espn_auction_values(pitchers)
 
+        del pitchers['fantasy_team_id']
+        pitchers = add_roster_state(pitchers)
+        print(pitchers.columns)
+
         columns = [
             'fg_name',
             'Team',
             'valuation_inflation',
             'espn_value',
-            'valuation_flat',
             'keeper_salary',
+            'fantasy_team_id',
         ]
     else:
         pitchers = add_roster_state(pitchers)
@@ -88,11 +94,47 @@ def main():
 
     pitchers = pitchers.sort_values('p_added_per_week', ascending=False)
 
-    pitchers.to_csv('data/historical/pitcher_{:%Y-%m-%d}.csv'.format(datetime.datetime.today()), index=False, columns=columns, encoding='utf8')
-    pitchers.to_csv('pitcher_valuation.csv', index=False, columns=columns, encoding='utf8')
+    pitchers.to_csv('data/historical/pitcher_{:%Y-%m-%d}.csv'.format(datetime.datetime.today()), index=False, columns=columns, encoding='utf8', float_format='%.2f')
+    pitchers.to_csv('pitcher_valuation.csv', index=False, columns=columns, encoding='utf8', float_format='%.2f')
 
 
-def calculate_p_added(projection_type, draft=False):
+def adjust_saves(projections):
+    """
+    Manually adjust saves projections
+    """
+    # Braves
+    projections.loc[projections['fg_name'] == 'Arodys Vizcaino', 'SV'] = 26
+    projections.loc[projections['fg_name'] == 'A.J. Minter', 'SV'] = 8
+
+    # Cubs
+    projections.loc[projections['fg_name'] == 'Brandon Morrow', 'SV'] = 17.5
+    projections.loc[projections['fg_name'] == 'Pedro Strop', 'SV'] = 14.5
+
+    # Marlins
+    projections.loc[projections['fg_name'] == 'Drew Steckenrider', 'SV'] = 9
+    projections.loc[projections['fg_name'] == 'Sergio Romo', 'SV'] = 12
+    projections.loc[projections['fg_name'] == 'Adam Conley', 'SV'] = 6
+
+    # Rays
+    projections.loc[projections['fg_name'] == 'Jose Alvarado', 'SV'] = 25
+    projections.loc[projections['fg_name'] == 'Chaz Roe', 'SV'] = 10
+
+    # Red Sox
+    projections.loc[projections['fg_name'] == 'Ryan Brasier', 'SV'] = 10
+    projections.loc[projections['fg_name'] == 'Matt Barnes', 'SV'] = 28
+
+    # Royals
+    projections.loc[projections['fg_name'] == 'Brad Boxberger', 'SV'] = 12
+    projections.loc[projections['fg_name'] == 'Wily Peralta', 'SV'] = 12
+
+    # Twins
+    projections.loc[projections['fg_name'] == 'Blake Parker', 'SV'] = 14
+    projections.loc[projections['fg_name'] == 'Trevor May', 'SV'] = 18
+
+    return projections
+    
+
+def calculate_p_added(projection_type, draft=False, l14pt=False):
     """
     Calculate probability added for pitchers from projected stats
 
@@ -108,16 +150,18 @@ def calculate_p_added(projection_type, draft=False):
     positions = load_espn_positions()
     # positions = correct_pitcher_positions(positions)
 
+    projections = adjust_saves(projections)
+
     pitchers = projections.merge(mapping[['mlb_id', 'fg_id', 'espn_id']], how='left', on='fg_id')
     pitchers = pitchers.merge(positions, how='left', on='espn_id')
 
-    if draft:
+    if l14pt:
+        pitchers = add_playing_time(pitchers)  # add in the latest playing time for pitchers
+    else:
         pitchers['IP_per_week'] = pitchers['IP'] / REMAINING_WEEKS
         pitchers['weeks'] = REMAINING_WEEKS
-    else:
-        pitchers = add_playing_time(pitchers)  # add in the latest playing time for pitchers
 
-    pitcher_categories_info = joblib.load('data/pitchers.pickle')  # load results of the logistic regression
+    pitcher_categories_info = joblib.load('league_data/pitchers.pickle')  # load results of the logistic regression
 
     base_team_probabilities = {
         'SV': 0.5,

@@ -27,8 +27,10 @@ The category valuations are applied against rest-of-season projections from Fang
     * Scrape the pre-season projections from Fangraphs. The projection system used is configurable.
 1. `scrape_espn_eligibilities.py --draft`
     * Scrape positional eligibilities for players from ESPN. This is needed for positional adjustments.
+    * TODO: update to be dynamic
 1. `map_players.py`
     * TODO: update this script
+1. Update keepers list under `data/keepers.csv`.
 1. `python batter_valuation.py --draft`
 1. `python pitcher_valuation.py --draft`
 
@@ -37,7 +39,7 @@ The category valuations are applied against rest-of-season projections from Fang
 
 To gather fresh data:
 
-1. scrape_playing_time.py
+1. `scrape_playing_time.py`
     * Scrape the number of PA / IP for each player in the past 14 days.
 1. `scrape_fangraphs.py`
     * Scrape the rest-of-season projections from Fangraphs. The projection system used is configurable.

@@ -171,7 +171,7 @@ def load_keepers():
     Load keeper salaries
 
     """
-    keepers = pandas.read_csv(os.path.join(DATA_DIRECTORY, 'keepers.csv'), na_values='NA', dtype={'mlb_id': object}, comment='#')
+    keepers = pandas.read_csv(os.path.join('league_data', 'keepers.csv'), na_values='NA', dtype={'mlb_id': object}, comment='#')
 
     del keepers['name']
 
@@ -216,7 +216,7 @@ def load_rosters():
     Load ESPN rosters
 
     """
-    rosters = pandas.read_csv(os.path.join(WORKING_DIRECTORY, 'rosters.csv'), na_values='NA', dtype={'espn_id': object})
+    rosters = pandas.read_csv(os.path.join(DATA_DIRECTORY, 'rosters.csv'), na_values='NA', dtype={'espn_id': object})
 
     return rosters
 

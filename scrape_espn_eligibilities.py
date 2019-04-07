@@ -51,7 +51,7 @@ def main():
 
     position_mapping = {k: v for k, v in zip(POSSIBLE_POSITIONS, POSITION_IDS)}
 
-    with open("data/espn_players_2019-03-10.json") as f:
+    with open("data/espn_players_{:%Y-%m-%d}.json".format(date_date)) as f:
         players_json = json.load(f)
 
     players = []
