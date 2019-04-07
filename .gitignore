@@ -1,10 +1,13 @@
 # personal configuration
 config.py
 *.data
+*.viewstate
+*.txt
 
 # data files
 *.csv
 *.json
+*.json.gz
 *.pickle
 
 # research
@@ -13,4 +16,3 @@ notebooks/
 # python files
 *.pyc
 __*.py
-
