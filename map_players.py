@@ -3,8 +3,8 @@ Rewrite of player mapping script
 
 1. Load existing mapping
 2. Map any fantasy relevant players to espn_ids
-
 """
+import argparse
 
 import pandas
 
@@ -21,15 +21,19 @@ MIN_IP = 10
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--projection", default="rfangraphsdc", help="projection system to use, choices are rfangraphs / steamer600u")
+    args = parser.parse_args()
+
     mapping = load_mapping()
 
-    projections = load_fangraphs_batter_projections('fangraphsdc')
+    projections = load_fangraphs_batter_projections(args.projection)
     projections = projections[projections['PA'] >= MIN_PA]  # only batters projected for more than MIN_PA
     players = projections.merge(mapping[['mlb_id', 'fg_id', 'espn_id', 'yahoo_id']], how='left', on='fg_id')
 
     mapping = add_espn_id(mapping, players)
 
-    projections = load_fangraphs_pitcher_projections('fangraphsdc')
+    projections = load_fangraphs_pitcher_projections(args.projection)
     projections = projections[projections['IP'] >= MIN_IP]  # only pitchers projected for more than MIN_IP
     players = projections.merge(mapping[['mlb_id', 'fg_id', 'espn_id', 'yahoo_id']], how='left', on='fg_id')
 
