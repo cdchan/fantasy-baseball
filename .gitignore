@@ -3,16 +3,17 @@ config.py
 *.data
 *.viewstate
 *.txt
+__*
 
 # data files
 *.csv
 *.json
 *.json.gz
 *.pickle
+*.html
 
 # research
 notebooks/
 
 # python files
 *.pyc
-__*.py

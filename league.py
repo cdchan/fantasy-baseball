@@ -27,7 +27,7 @@ class League(object):
 
         self.player_mapping = pandas.read_csv(
             os.path.join(
-                DATA_DIRECTORY,
+                self.data_directory,
                 "player_mapping.csv"
         ), dtype=self.playerid_dtypes)
 
@@ -48,9 +48,12 @@ class League(object):
         return self._client
     
     def load_player_projections(self, projections_name, player_type):
+        """
+        Load player projections for batters or pitchers
+        """
         projections = pandas.read_csv(
             os.path.join(
-                DATA_DIRECTORY,
+                self.data_directory,
                 "projections",
                 "{projections_name}_{player_type}.csv".format(
                     projections_name=projections_name,
