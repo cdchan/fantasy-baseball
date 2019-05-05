@@ -7,9 +7,13 @@ import os
 
 from lxml import etree
 import pandas
+import requests
+from requests_oauthlib import OAuth2Session
 
-from client import YahooClient
 import league
+
+
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
 
 class Yahoo(league.League):
@@ -22,10 +26,11 @@ class Yahoo(league.League):
         
         self._client_id = config['client_id']
         self._client_secret = config['client_secret']
+        self.season = config['season']
         self.sport_id = config['sport_id']
         self.league_id = config['league_id']
         self.weekly = config['weekly']
-        self.n_weeks = config['total_weeks']
+        self.n_weeks = config['remaining_weeks']
         self.n_teams = config['n_teams']
         self.n_batters = config['n_batters']
         self.n_pitchers = config['n_pitchers']
@@ -37,8 +42,6 @@ class Yahoo(league.League):
         # self.load_league_category_values()
         self.median_level = config['median_level']
         self.standings_delta = config['standings_delta']
-
-        self.load_players()
     
     def load_client(self, league_data_directory):
         return YahooClient(
@@ -304,7 +307,7 @@ class Yahoo(league.League):
         Query Yahoo API to refresh current team rosters.
         """
         if self.weekly:
-            date = "{:%Y-%m-%d}".format(find_closest_monday())
+            date = "{:%Y-%m-%d}".format(self.find_closest_monday())
         else:
             date = "{:%Y-%m-%d}".format(datetime.datetime.today())
 
@@ -318,7 +321,7 @@ class Yahoo(league.League):
         url = base_url + ".t.{team_id}/roster;date={date}"
 
         for team_id in range(1, self.n_teams + 1):
-            r = client.session.get(url.format(team_id=team_id, date=date))
+            r = self.client.session.get(url.format(team_id=team_id, date=date))
 
             root = etree.fromstring(r.content)
             # print(r.content)
@@ -332,24 +335,27 @@ class Yahoo(league.League):
 
         rosters = pandas.DataFrame(players)
 
+        if len(rosters) == 0:
+            raise Exception('Failed to retrieve roster')
+
         # fix Shohei Ohtani
         # as batter
         rosters.loc[rosters['yahoo_id'] == '1000001', 'yahoo_id'] = 10835
         # as pitcher
         rosters.loc[rosters['yahoo_id'] == '1000002', 'yahoo_id'] = 10835
 
-        if len(rosters) == 0:
-            raise Exception('Failed to retrieve roster')
-        else:
-            rosters.to_csv(os.path.join(
-                self.league_data_directory,
-                "rosters.csv"
-            ), encoding='utf8', index=False)
-            rosters.to_csv(os.path.join(
-                self.league_data_directory,
-                "historical",
-                "rosters_{}.csv".format(date)
-            ), encoding='utf8', index=False)
+        rosters['yahoo_id'] = pandas.to_numeric(rosters['yahoo_id'], downcast='float')
+        rosters['yahoo_id'] = rosters['yahoo_id'].astype('Int64')
+        
+        rosters.to_csv(os.path.join(
+            self.league_data_directory,
+            "rosters.csv"
+        ), encoding='utf8', index=False)
+        rosters.to_csv(os.path.join(
+            self.league_data_directory,
+            "historical",
+            "rosters_{}.csv".format(date)
+        ), encoding='utf8', index=False)
         
         self.rosters = rosters
     
@@ -366,15 +372,139 @@ class Yahoo(league.League):
             return today
         else:
             return today + datetime.timedelta(days_ahead)
+    
+    def refresh_scores(self, week_num):
+        url = "https://fantasysports.yahooapis.com/fantasy/v2/league/{sport_id}.l.{league_id}/scoreboard;week={week_num}"
+
+        r = self.client.session.get(url.format(
+            sport_id=self.sport_id,
+            league_id=self.league_id,
+            week_num=week_num
+        ))
+
+        root = etree.fromstring(r.content)
+
+        ns = {'f': 'http://fantasysports.yahooapis.com/fantasy/v2/base.rng'}
+
+        stat_category_mapping = {
+            '60': 'H/AB',
+            '7': 'R',
+            '8': 'H',
+            '12': 'HR',
+            '13': 'RBI',
+            '16': 'SB',
+            '55': 'OPS',
+            '50': 'IP',
+            '42': 'K',
+            '26': 'ERA',
+            '27': 'WHIP',
+            '57': 'K9',
+            '83': 'QS',
+            '89': 'SV+H'
+        }
+
+        stats = []
+
+        for matchup_xml in root.xpath("//f:matchup", namespaces=ns):
+            week = matchup_xml.findtext("f:week", namespaces=ns)
+            
+            if week == '1':
+                n_days = 11
+            else:
+                n_days = 7
+            
+            winners = {}
+            
+            for stat_winner_xml in matchup_xml.xpath("f:stat_winners/f:stat_winner", namespaces=ns):
+                stat_winner = {}
+                for child in stat_winner_xml:
+                    stat_winner[etree.QName(child.tag).localname] = child.text
+                    
+                if not 'is_tied' in stat_winner:
+                    winners[stat_category_mapping[stat_winner['stat_id']]] = stat_winner['winner_team_key'].split('.')[-1]
+                else:
+                    winners[stat_winner['stat_id']] = None
+            
+            for team_xml in matchup_xml.xpath("f:teams/f:team", namespaces=ns):
+                team_id = team_xml.findtext("f:team_id", namespaces=ns)
+
+                for stat_xml in team_xml.xpath("f:team_stats/f:stats/f:stat", namespaces=ns):
+                    category = stat_category_mapping[stat_xml.findtext("f:stat_id", namespaces=ns)]
+
+                    stat = {
+                        'season': 2019,
+                        'week': week,
+                        'n_days': n_days,
+                        'team_id': team_id,
+                    }
+                    
+                    if category == 'H/AB':
+                        stat['category'] = 'AB'
+                        stat['value'] = stat_xml.findtext("f:value", namespaces=ns).split('/')[-1]
+                    elif category == 'IP':
+                        stat['category'] = 'IP'
+                        ip, outs = stat_xml.findtext("f:value", namespaces=ns).split('.')
+                        stat['value'] = float(ip) + float(outs) / 3
+                    else:
+                        stat['category'] = category
+                        stat['value'] = stat_xml.findtext("f:value", namespaces=ns)
+                    
+                    if category in winners:
+                        stat['won'] = (winners[category] == team_id)
+                    else:
+                        stat['won'] = None
+                    
+                    stats.append(stat)
+
+        matchups = pandas.DataFrame(stats)
+        # there are ties, so we want a int column that contains nulls
+        matchups['won'] = (matchups['won'] * 1).astype('Int64')
+
+        matchups.to_csv(os.path.join(
+            self.league_data_directory,
+            "historical",
+            "scores_{}_week_{}.csv".format(self.season, week_num)
+        ), encoding='utf8', index=False)
 
 
-def main():
-    x = Yahoo("yahoo-new", "rfangraphsdc")
-    x.refresh_rosters()
-    # x.refresh_eligibilities()
-    x.load_players()
-    x.output_valuations()
+class YahooClient(object):
+    """
+    Client that sets up OAuth to get an authorized session.
 
+    Uses the requests_oauthlib library
+    """
+    token_url = 'https://api.login.yahoo.com/oauth2/get_token'
 
-if __name__ == '__main__':
-    main()
+    def __init__(self, client_id, client_secret, league_directory):
+        self.league_directory = league_directory
+        self.client_id = client_id
+        self.client_secret = client_secret
+
+        self.token_location = os.path.join(
+            self.league_directory,
+            "yahoo_token.json"
+        )
+
+        self.load_token()
+
+        self.session = OAuth2Session(
+            client_id=self.client_id,
+            token=self.token,
+            redirect_uri='oob',
+        )
+        
+        self.refresh_token()
+    
+    def load_token(self):
+        with open(self.token_location, 'r') as f:
+            self.token = json.load(f)
+    
+    def refresh_token(self):
+        self.token = self.session.refresh_token(
+            self.token_url,
+            client_id=self.client_id,
+            client_secret=self.client_secret
+        )
+
+        with open(self.token_location, 'w') as f:
+            json.dump(self.token, f)

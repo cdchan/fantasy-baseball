@@ -6,6 +6,7 @@ config.py
 __*
 
 # data files
+*.~*
 *.csv
 *.json
 *.json.gz

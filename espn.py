@@ -8,8 +8,8 @@ import json
 import os
 
 import pandas
+import requests
 
-from client import EspnClient
 from config import (
     DATA_DIRECTORY
 )
@@ -146,10 +146,20 @@ class Espn(league.League):
         return players
 
 
-def main():
-    x = Espn("espn-old")
-    x.scrape_player_info()
+class EspnClient(object):
+    """
+    Client that sets up cookies for authentication.
+    """
+    def __init__(self, league_directory):
+        with open(os.path.join(league_directory, "cookie.txt"), 'r') as f:
+            cookie_string = f.read()
+        
+        cookie = {}
 
-
-if __name__ == '__main__':
-    main()
+        for x in cookie_string.split(';'):
+            k, v = x.strip().split('=')
+            cookie[k] = v
+        
+        self.session = requests.Session()
+        # session.cookies = requests.cookies.cookiejar_from_dict(cookie_dict)
+        self.session.headers.update({'Cookie': cookie_string})
