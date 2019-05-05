@@ -11,8 +11,8 @@ import pandas
 
 from sklearn.externals import joblib
 
-from config import REMAINING_WEEKS, N_BATTERS, N_TEAMS, BATTER_BUDGET_RATIO
-from utils import load_mapping, load_fangraphs_batter_projections, load_espn_positions, load_keepers, add_espn_auction_values, add_roster_state
+from config import REMAINING_WEEKS, N_BATTERS, N_TEAMS, BATTER_BUDGET_RATIO, LEAGUE_DATA_DIRECTORY
+from utils import load_mapping, load_fangraphs_batter_projections, load_espn_positions, load_keepers, add_espn_auction_values, add_roster_state, load_playing_time
 
 team_PA_per_week = 300  # assume the team gets 300 PA a week
 
@@ -35,6 +35,8 @@ def main():
 
     if args.draft:
         projection_type = "fangraphsdc"
+    elif args.l14pt:
+        projection_type = "steamer600u"
     else:
         projection_type = args.projection
 
@@ -131,8 +133,13 @@ def main():
 
     batters.sort_values('adj_p_added_per_week', ascending=False, inplace=True)
 
-    batters.to_csv('data/historical/batter_{:%Y-%m-%d}.csv'.format(datetime.datetime.today()), index=False, columns=columns, encoding='utf8', float_format='%.2f')
-    batters.to_csv('batter_valuation.csv', index=False, columns=columns, encoding='utf8', float_format='%.2f')
+    batters.to_csv('{}/valuations/batter_{:%Y-%m-%d}.csv'.format(
+        LEAGUE_DATA_DIRECTORY,
+        datetime.datetime.today()
+    ), index=False, columns=columns, encoding='utf8', float_format='%.2f')
+    batters.to_csv('{}/batter_valuation.csv'.format(
+        LEAGUE_DATA_DIRECTORY
+    ), index=False, columns=columns, encoding='utf8', float_format='%.2f')
 
 
 def calculate_p_added(projection_type, draft=False, l14pt=False):
@@ -154,7 +161,9 @@ def calculate_p_added(projection_type, draft=False, l14pt=False):
     batters = projections.merge(mapping[['mlb_id', 'fg_id', 'espn_id']], how='left', on='fg_id')
     batters = batters.merge(positions, how='left', on='espn_id')
 
-    batter_categories_info = joblib.load('league_data/batters.pickle')  # load results of the logistic regression
+    batter_categories_info = joblib.load('{}/batters.pickle'.format(
+        LEAGUE_DATA_DIRECTORY
+    ))  # load results of the logistic regression
     # TODO fix path to pickle
 
     if l14pt:
@@ -256,9 +265,7 @@ def add_playing_time(batters):
     Add batters' PA from the past 14 days
 
     """
-    playing_time = pandas.read_csv('batter_playing_time.csv', encoding="utf-8-sig", error_bad_lines=False, dtype={'playerid': object})
-
-    playing_time.rename(columns={'"Name"': "name", 'Name': "name", '2B': "D", '3B': "T"}, inplace=True)  # columns can't begin with numbers
+    playing_time = load_playing_time('batter')
 
     # how many games has the team had overall?
     playing_time['team_G'] = playing_time.groupby('Team')['G'].transform(lambda x: x.max())
@@ -269,7 +276,7 @@ def add_playing_time(batters):
     # what is the overall average number of PA per week?
     avg_PA_per_week = 1.0 * playing_time['PA'].iloc[:12*14].sum() / playing_time['G'].iloc[:12*14].sum() * 6
 
-    batters = batters.merge(playing_time[['playerid', 'l14_PA_per_week', 'l14_G']], how='left', on='playerid')
+    batters = batters.merge(playing_time[['fg_id', 'l14_PA_per_week', 'l14_G']], how='left', on='fg_id')
 
     batters['l14_PA_per_week'] = batters['l14_PA_per_week'].fillna(0)  # if the batter hasn't played in the past 14 days, set their PA to 0
 

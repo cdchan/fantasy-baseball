@@ -9,7 +9,24 @@ import numpy
 import pandas
 
 
-from config import DATA_DIRECTORY, PROJECTIONS_DIRECTORY, WORKING_DIRECTORY
+from config import (
+    CURRENT_YEAR,
+    DATA_DIRECTORY,
+    LEAGUE_DATA_DIRECTORY,
+    PROJECTIONS_DIRECTORY,
+    WORKING_DIRECTORY
+)
+
+
+fangraphs_column_mapping = {
+    '"Name"': "fg_name",
+    'Name': "fg_name",
+    'playerid': "fg_id",
+    'K/9': "K9",
+    'SO': "K",
+    '2B': "D",
+    '3B': "T",
+}
 
 
 def load_mapping():
@@ -41,13 +58,7 @@ def load_fangraphs_pitcher_projections(projection_type):
 
     projections = pandas.read_csv(os.path.join(PROJECTIONS_DIRECTORY, filename), encoding="utf-8-sig")
 
-    projections.rename(columns={
-        '"Name"': "fg_name",
-        'Name': "fg_name",
-        'playerid': "fg_id",
-        'K/9': "K9",
-        'SO': "K"
-    }, inplace=True)
+    projections.rename(columns=fangraphs_column_mapping, inplace=True)
 
     projections.sort_values('IP', ascending=False, inplace=True)
     projections.drop_duplicates(subset=['fg_id'], keep='last', inplace=True)
@@ -65,13 +76,7 @@ def load_fangraphs_batter_projections(projection_type):
 
     projections = pandas.read_csv(os.path.join(PROJECTIONS_DIRECTORY, filename), encoding="utf-8-sig", error_bad_lines=False)
 
-    projections.rename(columns={
-        '"Name"': "fg_name",
-        'Name': "fg_name",
-        'playerid': "fg_id",
-        '2B': "D",
-        '3B': "T"
-    }, inplace=True)  # columns can't begin with numbers
+    projections.rename(columns=fangraphs_column_mapping, inplace=True)  # columns can't begin with numbers
 
     projections.sort_values('PA', ascending=False, inplace=True)
     projections.drop_duplicates(subset=['fg_id'], keep='last', inplace=True)
@@ -79,6 +84,21 @@ def load_fangraphs_batter_projections(projection_type):
     projections = convert_fangraphs_playerid(projections)
 
     return projections
+
+
+def load_playing_time(player_type):
+    """
+    Load playing time from the past 14 days
+    """
+    filename = os.path.join(
+        'data',
+        '{}_playing_time.csv'.format(player_type))
+
+    playing_time = pandas.read_csv(filename, encoding="utf-8-sig", error_bad_lines=False, dtype={'playerid': object})
+
+    playing_time.rename(columns=fangraphs_column_mapping, inplace=True)
+
+    return playing_time
 
 
 def convert_fangraphs_playerid(projections):
@@ -216,7 +236,7 @@ def load_rosters():
     Load ESPN rosters
 
     """
-    rosters = pandas.read_csv(os.path.join(DATA_DIRECTORY, 'rosters.csv'), na_values='NA', dtype={'espn_id': object})
+    rosters = pandas.read_csv(os.path.join(LEAGUE_DATA_DIRECTORY, 'rosters.csv'), na_values='NA', dtype={'espn_id': object})
 
     return rosters
 

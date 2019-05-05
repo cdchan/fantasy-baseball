@@ -10,8 +10,8 @@ import numpy
 import pandas
 from sklearn.externals import joblib
 
-from config import REMAINING_WEEKS, N_PITCHERS, N_TEAMS, BATTER_BUDGET_RATIO
-from utils import load_mapping, load_fangraphs_pitcher_projections, load_espn_positions, load_keepers, add_espn_auction_values, add_roster_state
+from config import REMAINING_WEEKS, N_PITCHERS, N_TEAMS, BATTER_BUDGET_RATIO, LEAGUE_DATA_DIRECTORY
+from utils import load_mapping, load_fangraphs_pitcher_projections, load_espn_positions, load_keepers, add_espn_auction_values, add_roster_state, load_saves_projections
 
 
 MIN_IP = 1
@@ -94,43 +94,19 @@ def main():
 
     pitchers = pitchers.sort_values('p_added_per_week', ascending=False)
 
-    pitchers.to_csv('data/historical/pitcher_{:%Y-%m-%d}.csv'.format(datetime.datetime.today()), index=False, columns=columns, encoding='utf8', float_format='%.2f')
-    pitchers.to_csv('pitcher_valuation.csv', index=False, columns=columns, encoding='utf8', float_format='%.2f')
+    pitchers.to_csv('{}/valuations/pitcher_{:%Y-%m-%d}.csv'.format(
+        LEAGUE_DATA_DIRECTORY,
+        datetime.datetime.today()
+    ), index=False, columns=columns, encoding='utf8', float_format='%.2f')
+    pitchers.to_csv('{}/pitcher_valuation.csv'.format(
+        LEAGUE_DATA_DIRECTORY
+    ), index=False, columns=columns, encoding='utf8', float_format='%.2f')
 
 
 def adjust_saves(projections):
     """
     Manually adjust saves projections
     """
-    # Braves
-    projections.loc[projections['fg_name'] == 'Arodys Vizcaino', 'SV'] = 26
-    projections.loc[projections['fg_name'] == 'A.J. Minter', 'SV'] = 8
-
-    # Cubs
-    projections.loc[projections['fg_name'] == 'Brandon Morrow', 'SV'] = 17.5
-    projections.loc[projections['fg_name'] == 'Pedro Strop', 'SV'] = 14.5
-
-    # Marlins
-    projections.loc[projections['fg_name'] == 'Drew Steckenrider', 'SV'] = 9
-    projections.loc[projections['fg_name'] == 'Sergio Romo', 'SV'] = 12
-    projections.loc[projections['fg_name'] == 'Adam Conley', 'SV'] = 6
-
-    # Rays
-    projections.loc[projections['fg_name'] == 'Jose Alvarado', 'SV'] = 25
-    projections.loc[projections['fg_name'] == 'Chaz Roe', 'SV'] = 10
-
-    # Red Sox
-    projections.loc[projections['fg_name'] == 'Ryan Brasier', 'SV'] = 10
-    projections.loc[projections['fg_name'] == 'Matt Barnes', 'SV'] = 28
-
-    # Royals
-    projections.loc[projections['fg_name'] == 'Brad Boxberger', 'SV'] = 12
-    projections.loc[projections['fg_name'] == 'Wily Peralta', 'SV'] = 12
-
-    # Twins
-    projections.loc[projections['fg_name'] == 'Blake Parker', 'SV'] = 14
-    projections.loc[projections['fg_name'] == 'Trevor May', 'SV'] = 18
-
     return projections
     
 
@@ -161,7 +137,7 @@ def calculate_p_added(projection_type, draft=False, l14pt=False):
         pitchers['IP_per_week'] = pitchers['IP'] / REMAINING_WEEKS
         pitchers['weeks'] = REMAINING_WEEKS
 
-    pitcher_categories_info = joblib.load('league_data/pitchers.pickle')  # load results of the logistic regression
+    pitcher_categories_info = joblib.load('{}/pitchers.pickle'.format(LEAGUE_DATA_DIRECTORY))  # load results of the logistic regression
 
     base_team_probabilities = {
         'SV': 0.5,
