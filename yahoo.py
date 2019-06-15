@@ -29,6 +29,7 @@ class Yahoo(league.League):
         self.season = config['season']
         self.sport_id = config['sport_id']
         self.league_id = config['league_id']
+        self.my_team_id = config['my_team_id']
         self.weekly = config['weekly']
         self.n_weeks = config['remaining_weeks']
         self.n_teams = config['n_teams']
