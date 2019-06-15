@@ -7,9 +7,6 @@ Variables to update:
 * CURRENT_YEAR
 * season_final_day
 * fangraphs_form_data
-* LEAGUE_ID
-* ESPN_COOKIE
-
 """
 
 import datetime
@@ -43,6 +40,8 @@ BATTER_BUDGET_RATIO = 0.65  # how much to spend on batters vs pitchers
 
 
 TEAM_PA_PER_WEEK = 287  # estimated number of PA per team per week
+
+
 #####
 # Fangraphs settings
 
@@ -52,4 +51,8 @@ fangraphs_form_data = {
 
 
 fangraphs_leaderboard_form_data = {
+}
+
+
+fangraphs_dfs_form_data = {
 }
