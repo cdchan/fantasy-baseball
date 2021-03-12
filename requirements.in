@@ -1,0 +1,6 @@
+lxml
+numpy
+pandas
+requests
+requests_oauthlib
+sklearn
