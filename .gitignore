@@ -3,7 +3,6 @@
 config.py
 *.data
 *.viewstate
-*.txt
 
 # data files
 *.~*

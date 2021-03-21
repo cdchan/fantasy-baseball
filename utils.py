@@ -191,7 +191,7 @@ def load_keepers():
     Load keeper salaries
 
     """
-    keepers = pandas.read_csv(os.path.join('league_data', 'keepers.csv'), na_values='NA', dtype={'mlb_id': object}, comment='#')
+    keepers = pandas.read_csv(os.path.join(LEAGUE_DATA_DIRECTORY, 'keepers.csv'), na_values='NA', dtype={'mlb_id': object}, comment='#')
 
     del keepers['name']
 
