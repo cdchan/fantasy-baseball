@@ -6,10 +6,8 @@ Batter valuation
 import argparse
 import datetime
 
+import joblib
 import numpy
-import pandas
-
-from sklearn.externals import joblib
 
 from config import REMAINING_WEEKS, N_BATTERS, N_TEAMS, BATTER_BUDGET_RATIO, LEAGUE_DATA_DIRECTORY
 from utils import load_mapping, load_fangraphs_batter_projections, load_espn_positions, load_keepers, add_espn_auction_values, add_roster_state, load_playing_time
@@ -133,13 +131,15 @@ def main():
 
     batters.sort_values('adj_p_added_per_week', ascending=False, inplace=True)
 
+    output_columns =  [col for col in columns if col in batters.columns]
+
     batters.to_csv('{}/valuations/batter_{:%Y-%m-%d}.csv'.format(
         LEAGUE_DATA_DIRECTORY,
         datetime.datetime.today()
-    ), index=False, columns=columns, encoding='utf8', float_format='%.2f')
+    ), index=False, columns=output_columns, encoding='utf8', float_format='%.2f')
     batters.to_csv('{}/batter_valuation.csv'.format(
         LEAGUE_DATA_DIRECTORY
-    ), index=False, columns=columns, encoding='utf8', float_format='%.2f')
+    ), index=False, columns=output_columns, encoding='utf8', float_format='%.2f')
 
 
 def calculate_p_added(projection_type, draft=False, l14pt=False):

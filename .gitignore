@@ -1,9 +1,8 @@
 # personal configuration
+.env
 config.py
 *.data
 *.viewstate
-*.txt
-__*
 
 # data files
 *.~*

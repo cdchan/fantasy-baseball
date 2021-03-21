@@ -15,18 +15,14 @@ Therefore the current season would have an influence of about 34%. Halfway throu
 
 import os
 
+import joblib
 import numpy
 import pandas
 
-
 from sklearn.linear_model import LogisticRegression
-from sklearn.externals import joblib
 
 
-from config import CURRENT_YEAR, DATA_DIRECTORY
-
-
-YEARS = [2016, 2017, 2018]
+from config import CURRENT_YEAR, HISTORICAL_DATA_YEARS, LEAGUE_DATA_DIRECTORY
 
 
 def main():
@@ -40,7 +36,7 @@ def calculate_probability_added_batting():
     Calculate the winning probability added for each category when an additional unit is added
 
     """
-    scores = load_scores(YEARS)
+    scores = load_scores(HISTORICAL_DATA_YEARS)
 
     scores['ePA'] = scores['AB'] + scores['BB']
     scores['OBP_big'] = scores['OBP'] * 1000
@@ -60,7 +56,7 @@ def calculate_probability_added_batting():
         lm.fit(train[[category]], train['winner'], sample_weight=train['year_weight'])
         batter_categories_info['models'][category] = lm
 
-    joblib.dump(batter_categories_info, 'batters.pkl')
+    joblib.dump(batter_categories_info, os.path.join(LEAGUE_DATA_DIRECTORY,'batters.pickle'))
 
     return True
 
@@ -87,7 +83,7 @@ def calculate_probability_added_pitching():
         lm.fit(train[[category]], train['winner'], sample_weight=train['year_weight'])
         pitcher_categories_info['models'][category] = lm
 
-    joblib.dump(pitcher_categories_info, 'pitchers.pkl')
+    joblib.dump(pitcher_categories_info, os.path.join(LEAGUE_DATA_DIRECTORY, 'pitchers.pickle'))
 
     return True
 
@@ -100,7 +96,7 @@ def load_scores(years):
     scores = []
 
     for year in years:
-        scores.append(pandas.read_csv(os.path.join(DATA_DIRECTORY, 'scores_{year}.csv'.format(year=year))))
+        scores.append(pandas.read_csv(os.path.join(LEAGUE_DATA_DIRECTORY, 'scores', 'scores_{year}.csv'.format(year=year))))
 
     scores = pandas.concat(scores)
 

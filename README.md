@@ -23,7 +23,7 @@ Fangraphs has changed their form data in the past. Verify that the existing form
 
 ### ESPN
 
-1. Update configuration file by making a copy of config.py.sample, renaming to config.py, and filling out the configuration.
+1. Update configuration file by making a copy of `config.py.sample`, renaming to `config.py`, and filling out the configuration.
     * Update:
         * `CURRENT_YEAR`
         * `season_final_day`

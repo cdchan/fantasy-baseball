@@ -1,0 +1,8 @@
+version: '3'
+
+services:
+  fbb:
+    build: .
+    volumes:
+      - .:/app
+    user: $UID:$GID

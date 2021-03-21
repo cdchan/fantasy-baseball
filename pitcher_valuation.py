@@ -6,12 +6,12 @@ Pitcher valuation
 import argparse
 import datetime
 
+import joblib
 import numpy
 import pandas
-from sklearn.externals import joblib
 
 from config import REMAINING_WEEKS, N_PITCHERS, N_TEAMS, BATTER_BUDGET_RATIO, LEAGUE_DATA_DIRECTORY
-from utils import load_mapping, load_fangraphs_pitcher_projections, load_espn_positions, load_keepers, add_espn_auction_values, add_roster_state, load_saves_projections
+from utils import load_mapping, load_fangraphs_pitcher_projections, load_espn_positions, load_keepers, add_espn_auction_values, add_roster_state
 
 
 MIN_IP = 1
@@ -94,13 +94,15 @@ def main():
 
     pitchers = pitchers.sort_values('p_added_per_week', ascending=False)
 
+    output_columns =  [col for col in columns if col in pitchers.columns]
+
     pitchers.to_csv('{}/valuations/pitcher_{:%Y-%m-%d}.csv'.format(
         LEAGUE_DATA_DIRECTORY,
         datetime.datetime.today()
-    ), index=False, columns=columns, encoding='utf8', float_format='%.2f')
+    ), index=False, columns=output_columns, encoding='utf8', float_format='%.2f')
     pitchers.to_csv('{}/pitcher_valuation.csv'.format(
         LEAGUE_DATA_DIRECTORY
-    ), index=False, columns=columns, encoding='utf8', float_format='%.2f')
+    ), index=False, columns=output_columns, encoding='utf8', float_format='%.2f')
 
 
 def adjust_saves(projections):
@@ -276,7 +278,7 @@ def calculate_replacement_score(pitchers):
     replacement_level = {}
     rostered = N_PITCHERS * N_TEAMS
 
-    replacement_level['P'] = numpy.mean(pitchers.ix[rostered:(rostered + 2)]['p_added_per_week'])
+    replacement_level['P'] = numpy.mean(pitchers.iloc[rostered:(rostered + 2)]['p_added_per_week'])
 
     pitchers['rep_p_added_per_week'] = replacement_level['P']
 
