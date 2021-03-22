@@ -36,7 +36,7 @@ Fangraphs has changed their form data in the past. Verify that the existing form
 1. `scrape_fangraphs.py --draft`
     * Scrape the pre-season projections from Fangraphs. The projection system used is configurable.
 1. Update player information in each league.
-    * ESPN: `scrape_player_info`.
+    * ESPN: Call `scrape_player_info` method after instantiating ESPN league.
 1. `map_players.py`
     * TODO: update this script
 

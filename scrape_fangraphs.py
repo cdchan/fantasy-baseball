@@ -16,7 +16,7 @@ def main():
     args = parser.parse_args()
 
     if args.draft:
-        projection_types = ["fangraphsdc"]
+        projection_types = ["fangraphsdc", "thebatx"]
     else:
         projection_types = []
         projection_types.append("rfangraphsdc")  # rest of season projections

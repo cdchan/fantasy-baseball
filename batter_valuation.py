@@ -32,7 +32,7 @@ def main():
     args = parser.parse_args()
 
     if args.draft:
-        projection_type = "fangraphsdc"
+        projection_type = "thebatx"
     elif args.l14pt:
         projection_type = "steamer600u"
     else:
@@ -70,9 +70,6 @@ def main():
             batters['all_elig'] += numpy.where((batters[position] == 1) & (batters['position'] != position), position + ',', '')
         batters['all_elig'] = batters['all_elig'].str[:-1]
 
-        del batters['fantasy_team_id']
-
-        batters = add_roster_state(batters)
         print(batters.columns)
 
         columns += [

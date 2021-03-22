@@ -11,7 +11,7 @@ import pandas
 import requests
 
 from config import (
-    DATA_DIRECTORY
+    CURRENT_YEAR, DATA_DIRECTORY
 )
 import league
 
@@ -44,8 +44,14 @@ class Espn(league.League):
         """
         data_date = datetime.date.today()
 
-        response = self.client.session.get("http://fantasy.espn.com/apis/v3/games/flb/seasons/2019/segments/0/leagues/{league_id}?view=kona_player_info".format(league_id=self.league_id))
+        headers = {'x-fantasy-filter': json.dumps({
+            'players': {
+                'limit': 1000,
+                "sortPercOwned": {"sortPriority":2, "sortAsc": False}
+            }
+        })}
 
+        response = self.client.session.get(f"http://fantasy.espn.com/apis/v3/games/flb/seasons/{CURRENT_YEAR}/segments/0/leagues/{self.league_id}?view=kona_player_info", headers=headers)
         self.players_info_filename = self.players_info_filename_base.format(data_date)
         
         # these jsons are large, so compress them
@@ -109,6 +115,7 @@ class Espn(league.League):
                 'espn_id': player_json['id'],
                 'espn_name': player_json['player']['fullName'],
                 'espn_value': player_json['draftAuctionValue'],
+                'espn_team_id': player_json['player']['proTeamId']
             }
 
             for pos, espn_pos_id in position_mapping.items():
@@ -122,7 +129,14 @@ class Espn(league.League):
         players = pandas.DataFrame(players)
         print(players.dtypes)
 
-        columns = ['espn_name', 'espn_id'] + POSSIBLE_POSITIONS
+        espn_team_mapping = pandas.read_csv(os.path.join(
+            DATA_DIRECTORY,
+            "espn_real_team_mapping.csv"
+        ))
+
+        players = players.merge(espn_team_mapping, on='espn_team_id', how='left')
+
+        columns = ['espn_name', 'espn_id', 'team_abbr'] + POSSIBLE_POSITIONS
 
         players.to_csv(os.path.join(
             DATA_DIRECTORY,
@@ -157,7 +171,7 @@ class EspnClient(object):
         cookie = {}
 
         for x in cookie_string.split(';'):
-            k, v = x.strip().split('=')
+            k, v = x.strip().split('=', maxsplit=1)
             cookie[k] = v
         
         self.session = requests.Session()
