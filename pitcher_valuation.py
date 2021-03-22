@@ -46,8 +46,6 @@ def main():
 
         pitchers = add_espn_auction_values(pitchers)
 
-        del pitchers['fantasy_team_id']
-        pitchers = add_roster_state(pitchers)
         print(pitchers.columns)
 
         columns = [

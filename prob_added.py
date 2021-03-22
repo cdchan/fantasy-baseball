@@ -66,7 +66,7 @@ def calculate_probability_added_pitching():
     Calculate the winning probability added for each category when an additional unit is added
 
     """
-    scores = load_scores(YEARS)
+    scores = load_scores(HISTORICAL_DATA_YEARS)
 
     pitcher_categories = ['IP', 'W', 'SV', 'ERA', 'WHIP', 'K9']
     pitcher_categories_info = {

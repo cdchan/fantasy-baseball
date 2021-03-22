@@ -31,10 +31,14 @@ class League(object):
                 "player_mapping.csv"
         ), dtype=self.playerid_dtypes)
 
-        self.rosters = pandas.read_csv(os.path.join(
-            self.league_data_directory,
-            "rosters.csv"
-        ), dtype=self.playerid_dtypes)
+        try:
+            self.rosters = pandas.read_csv(os.path.join(
+                self.league_data_directory,
+                "rosters.csv"
+            ), dtype=self.playerid_dtypes)
+        except pandas.errors.EmptyDataError:
+            print("Empty rosters")
+        # TODO handle if file doesn't exist
 
         self._client = None
     

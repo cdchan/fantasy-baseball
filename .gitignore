@@ -2,6 +2,7 @@
 .env
 config.py
 *.data
+*.txt
 *.viewstate
 
 # data files
