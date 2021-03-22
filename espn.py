@@ -46,7 +46,7 @@ class Espn(league.League):
 
         headers = {'x-fantasy-filter': json.dumps({
             'players': {
-                'limit': 1000,
+                'limit': 1000,  # TODO switch to paging
                 "sortPercOwned": {"sortPriority":2, "sortAsc": False}
             }
         })}
@@ -129,6 +129,7 @@ class Espn(league.League):
         players = pandas.DataFrame(players)
         print(players.dtypes)
 
+        # TODO probably should load this in a utility function
         espn_team_mapping = pandas.read_csv(os.path.join(
             DATA_DIRECTORY,
             "espn_real_team_mapping.csv"
