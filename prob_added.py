@@ -41,7 +41,7 @@ def calculate_probability_added_batting():
     scores['ePA'] = scores['AB'] + scores['BB']
     scores['OBP_big'] = scores['OBP'] * 1000
 
-    batting_categories = ['ePA', 'R', 'RBI', 'HR', 'SB', 'OBP_big']
+    batting_categories = ['ePA', 'R', 'RBI', 'HR', 'TB', 'SB', 'OBP_big']
     batter_categories_info = {
         'models': {},
         'p_added': {},
@@ -49,6 +49,7 @@ def calculate_probability_added_batting():
 
     for category in batting_categories:
         train = scores[['year', 'year_weight', 'matchup_id', category]].copy()
+        train = train[~train[category].isna()].copy()
 
         train['winner'] = train.groupby('matchup_id')[category].transform(lambda x: numpy.where(x == x.max(), 1, 0))
 

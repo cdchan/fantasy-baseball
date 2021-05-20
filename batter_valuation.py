@@ -28,13 +28,13 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--draft", action="store_true", help="prepare for auction draft")
     parser.add_argument("--l14pt", action="store_true", help="use last 14 days of playing time")
-    parser.add_argument("--projection", default="rfangraphsdc", help="projection system to use, choices are rfangraphs / steamer600u")
+    parser.add_argument("--projection", default="rthebatx", help="projection system to use")
     args = parser.parse_args()
 
     if args.draft:
         projection_type = "thebatx"
     elif args.l14pt:
-        projection_type = "steamer600u"
+        projection_type = args.projection
     else:
         projection_type = args.projection
 
@@ -190,9 +190,6 @@ def calculate_p_added(projection_type, draft=False, l14pt=False):
 
         batter_categories_info['rep_level'][cat] = rep_level
 
-    # no historical TB information yet
-    batter_categories_info['rep_level']['TB'] = batter_categories_info['rep_level']['HR'] * 12.0
-
     batter_categories_info['rep_level']['OBP'] = batter_categories_info['rep_level']['OBP_big'] / 1000.0  # need to convert out of percentage points to avoid numerical issues
 
     print(batter_categories_info['rep_level'])
@@ -214,8 +211,6 @@ def calculate_p_added(projection_type, draft=False, l14pt=False):
         # using logistic regression, what is the win probability added for 1 additional unit of each category
         x = batter_categories_info['models'][cat].predict_proba(numpy.array([x_0, x_1]).reshape(-1, 1))[:, 1]
         batter_categories_info['p_added'][cat] = x[1] - x[0]
-
-    batter_categories_info['p_added']['TB'] = batter_categories_info['p_added']['HR'] / 12.0
 
     # print out the win probability added
     print(batter_categories_info['p_added'])
