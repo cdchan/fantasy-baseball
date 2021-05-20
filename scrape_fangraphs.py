@@ -20,7 +20,7 @@ def main():
     else:
         projection_types = []
         projection_types.append("rfangraphsdc")  # rest of season projections
-        projection_types.append("steamer600u")
+        projection_types.append("rthebatx")
 
     for projection_type in projection_types:
         # save projections for current and historical usage

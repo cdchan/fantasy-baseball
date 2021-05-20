@@ -25,18 +25,20 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--projection", default="rfangraphsdc", help="projection system to use, choices are rfangraphs / steamer600u")
     # TODO add flag for which league ids need to be mapped (ESPN, Yahoo)
+    parser.add_argument("--pa", default=100, help="minimum PA projected to merit mapping")
+    parser.add_argument("--ip", default=10, help="minimum IP projected to merit mapping")
     args = parser.parse_args()
 
     mapping = load_mapping()
 
     projections = load_fangraphs_batter_projections(args.projection)
-    projections = projections[projections['PA'] >= MIN_PA]  # only batters projected for more than MIN_PA
+    projections = projections[projections['PA'] >= args.pa]  # only batters projected for more than min PA
     players = projections.merge(mapping[['mlb_id', 'fg_id', 'espn_id', 'yahoo_id']], how='left', on='fg_id')
 
     mapping = add_espn_id(mapping, players)
 
     projections = load_fangraphs_pitcher_projections(args.projection)
-    projections = projections[projections['IP'] >= MIN_IP]  # only pitchers projected for more than MIN_IP
+    projections = projections[projections['IP'] >= args.ip]  # only pitchers projected for more than min IP
     players = projections.merge(mapping[['mlb_id', 'fg_id', 'espn_id', 'yahoo_id']], how='left', on='fg_id')
 
     mapping = add_espn_id(mapping, players)
@@ -54,13 +56,13 @@ def add_espn_id(mapping, players):
     """
     # keep only players without ESPN id
     players_to_map = players[players['espn_id'].isnull()].copy()
-    # name is not necessarily unique, so drop all players with duplicate names
+    # (name, team) is not necessarily unique, so drop any players with the same name and team
     players_to_map.drop_duplicates(subset=['fg_name', 'Team'], keep=False, inplace=True)
     del players_to_map['espn_id']  # clear out column of nulls
     
     # ESPN position eligibilities have ESPN name and id
     espn_positions = load_espn_positions()
-    # name is not necessarily unique, so drop all players with duplicate names
+    # (name, team) is not necessarily unique, so drop any players with the same name and team
     espn_positions.drop_duplicates(subset=['espn_name', 'team_abbr'], keep=False, inplace=True)
 
     # look for exact matches between Fangraphs name and ESPN name
