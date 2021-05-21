@@ -4,6 +4,7 @@ config.py
 *.data
 *.txt
 *.viewstate
+my*
 
 # data files
 *.~*

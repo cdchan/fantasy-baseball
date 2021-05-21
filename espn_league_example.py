@@ -1,13 +1,11 @@
 """
 EXAMPLE: My personal ESPN league
 """
-import argparse
-
 from espn import Espn
 
 def main():
-    x = Espn("espn-old")
-    x.scrape_player_info()
+    x = Espn("my_espn_league_directory")
+    x.save_eligibilities()
 
 
 if __name__ == '__main__':

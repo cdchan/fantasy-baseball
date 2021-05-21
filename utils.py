@@ -119,7 +119,7 @@ def load_espn_positions():
     """
     Load player positional eligibilities from ESPN
     """
-    positions = pandas.read_csv(os.path.join(DATA_DIRECTORY, 'espn_eligibilities.csv'), na_values='NA', dtype={'espn_id': object}, encoding='utf-8')
+    positions = pandas.read_csv(os.path.join(LEAGUE_DATA_DIRECTORY, 'espn_eligibilities.csv'), na_values='NA', dtype={'espn_id': object}, encoding='utf-8')
 
     positions['OF'] = (positions['LF'] | positions['CF'] | positions['RF']).astype(int)
     positions['MI'] = (positions['2B'] | positions['SS']).astype(int)
