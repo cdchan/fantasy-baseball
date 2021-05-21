@@ -166,7 +166,7 @@ class Espn(espn_api.baseball.League):
                 'team_id': box_score.away_team.team_id,
                 'opponent_team_id': box_score.home_team.team_id
             }
-            stats = box_score.home_stats
+            stats = box_score.away_stats
         
         row['year'] = year
         row['matchup_period'] = week
