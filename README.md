@@ -23,6 +23,7 @@ Fangraphs has changed their form data in the past. Verify that the existing form
 
 ### ESPN
 
+1. Update `config.json` in ESPN league data directory.
 1. Update configuration file by making a copy of `config.py.sample`, renaming to `config.py`, and filling out the configuration.
     * Update:
         * `CURRENT_YEAR`
@@ -36,7 +37,7 @@ Fangraphs has changed their form data in the past. Verify that the existing form
 1. `scrape_fangraphs.py --draft`
     * Scrape the pre-season projections from Fangraphs. The projection system used is configurable.
 1. Update player information in each league.
-    * ESPN: Call `scrape_player_info` method after instantiating ESPN league.
+    * ESPN: Call `save_eligibilities` method after instantiating ESPN league.
 1. `map_players.py`
     * TODO: update this script
 
@@ -92,10 +93,12 @@ In general, we want to update league specific information and valuations next.
 1. For ESPN leagues, to update positional eligibility and team rosters:
     ```python
     espn = league.Espn("example_league_data_directory")
-    espn.scrape_player_info()
+    espn.save_eligibilities()
     ```
-1. TODO: ESPN changed their interface, so this won't work anymore. `scrape_scores.py`
-    * Update head to head results from the latest week.
+1. Call `save_scores` which will save all scores up to the current week.
+    ```python
+    espn.save_scores()
+    ```
 1. `prob_added.py`
     * Update the logistic regression.
 1. Update player valuations.

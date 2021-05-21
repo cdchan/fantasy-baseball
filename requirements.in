@@ -1,4 +1,5 @@
-lxml
+espn_api
+lxml>=4.6.3
 numpy
 pandas
 requests

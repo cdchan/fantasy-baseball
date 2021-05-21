@@ -3,12 +3,16 @@ Scrape Fangraphs playing time in the past 14 days
 
 """
 
-import argparse
 import datetime
+import os
 
 import requests
 
-from config import fangraphs_leaderboard_form_data
+from config import (
+    CURRENT_YEAR,
+    DATA_DIRECTORY,
+    fangraphs_leaderboard_form_data
+)
 
 
 def main():
@@ -19,12 +23,11 @@ def main():
 
     params = {
         'pos': 'all',
-        'stats': 'bat',
         'lg': 'all',
         'qual': 0,
         'type': 8,
-        'season': 2018,
-        'season1': 2018,
+        'season': CURRENT_YEAR,
+        'season1': CURRENT_YEAR,
         'ind': 0,
         'team': '',
         'rost': '',
@@ -36,8 +39,8 @@ def main():
     for player_type in player_types:
         # save projections for current and historical usage
         filenames = [
-            'historical/{}_playing_time_{:%Y%m%d}.csv'.format(player_type['type'], datetime.datetime.today()),
-            '{}_playing_time.csv'.format(player_type['type'])
+            os.path.join(DATA_DIRECTORY, 'historical', "{}_playing_time_{:%Y-%m-%d}.csv".format(player_type['type'], datetime.datetime.today())),
+            os.path.join(DATA_DIRECTORY, '{}_playing_time.csv'.format(player_type['type']))
         ]
 
         params['stats'] = player_type['stats']
@@ -54,7 +57,7 @@ def write_csvs(r, filenames):
 
     """
     for filename in filenames:
-        with open(filename, 'w') as output_file:
+        with open(filename, 'wb') as output_file:
             output_file.write(r.text[1:].encode('utf8'))  # remove the first 3 characters which are BOM
 
 

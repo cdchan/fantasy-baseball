@@ -6,9 +6,11 @@ Rewrite of player mapping script
 
 """
 import argparse
+import os
 
 import pandas
 
+from config import DATA_DIRECTORY
 from utils import (
     load_espn_positions,
     load_fangraphs_batter_projections,
@@ -63,7 +65,11 @@ def add_espn_id(mapping, players):
     # ESPN position eligibilities have ESPN name and id
     espn_positions = load_espn_positions()
     # (name, team) is not necessarily unique, so drop any players with the same name and team
-    espn_positions.drop_duplicates(subset=['espn_name', 'team_abbr'], keep=False, inplace=True)
+    espn_positions.drop_duplicates(subset=['espn_name', 'pro_team'], keep=False, inplace=True)
+
+    espn_pro_teams = pandas.read_csv(os.path.join(DATA_DIRECTORY, 'espn_pro_team_mapping.csv'))
+
+    espn_positions = espn_positions.merge(espn_pro_teams[['pro_team', 'team_abbr']])
 
     # look for exact matches between Fangraphs name and ESPN name
     matches = players_to_map.merge(espn_positions[['espn_name', 'team_abbr','espn_id']], left_on=['fg_name', 'Team'], right_on=['espn_name', 'team_abbr'], how='left')

@@ -1,180 +1,179 @@
 """
-Update ESPN league information
+ESPN league wrapper
+
+# TODO - handle draft auction values
+
 """
 
 import datetime
-import gzip
 import json
 import os
 
+import espn_api.baseball
 import pandas
-import requests
-
-from config import (
-    CURRENT_YEAR, DATA_DIRECTORY
-)
-import league
 
 
-class Espn(league.League):
-    players_info_filename_base = os.path.join(
-        DATA_DIRECTORY,
-        "historical",
-        "espn_players_{:%Y-%m-%d}.json.gz")
+class Espn(espn_api.baseball.League):
+    def __init__(self, league_data_directory):
+        self.league_data_directory = league_data_directory
 
-    def __init__(self, league_data_directory, projections_name="rfangraphsdc"):
-        super(Espn, self).__init__(league_data_directory, projections_name)
-
-        with open(os.path.join(league_data_directory, "config.json"), 'r') as f:
+        with open(os.path.join(self.league_data_directory, "config.json"), 'r') as f:
             config = json.load(f)
 
-        self.league_id = config['league_id']
+        super().__init__(**config)
 
-        self.players_info_filename = None
-
-    @staticmethod
-    def load_client(league_data_directory):
-        return EspnClient(league_data_directory)
-
-    def scrape_player_info(self):
-        """
-        Scrape ESPN player data (rosters, positional eligibility).
-
-        A single JSON contains both positional eligibility and roster state
-        """
+        self.possible_positions = ["C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH", "SP", "RP"]
+    
+    def save_eligibilities(self):
+        """Get all player positional eligibilities and save to CSV"""
         data_date = datetime.date.today()
 
-        headers = {'x-fantasy-filter': json.dumps({
-            'players': {
-                'limit': 1000,  # TODO switch to paging
-                "sortPercOwned": {"sortPriority":2, "sortAsc": False}
-            }
-        })}
+        self.save_rosters(data_date)
+        self._process_free_agents(data_date)
 
-        response = self.client.session.get(f"http://fantasy.espn.com/apis/v3/games/flb/seasons/{CURRENT_YEAR}/segments/0/leagues/{self.league_id}?view=kona_player_info", headers=headers)
-        self.players_info_filename = self.players_info_filename_base.format(data_date)
-        
-        # these jsons are large, so compress them
-        with gzip.GzipFile(self.players_info_filename, 'w') as f:
-            f.write(response.text.encode('utf-8'))
-        
-        self.rosters = self.scrape_rosters(response.json(), data_date)
-        self.elig = self.scrape_elig(response.json(), data_date)
-    
-    def scrape_rosters(self, espn_players_json=None, data_date=None):
-        """
-        Convert JSON from ESPN into CSV of team rosters
-        """
-        if not espn_players_json:
-            with gzip.GzipFile(self.players_info_filename, 'r') as f:
-                espn_players_json = json.loads(f.read().decode('utf-8'))
-        
-        players = []
-
-        for player_json in espn_players_json['players']:
-            player = {
-                'espn_id': player_json['id'],
-                'fantasy_team_id': player_json['onTeamId'],
-            }
-
-            if player['fantasy_team_id'] != 0:
-                players.append(player)
-
-        players = pandas.DataFrame(players)#, dtype=self.playerid_dtypes)
-        print(players.dtypes)
+        columns = ['espn_name', 'espn_id', 'pro_team', 'espn_injury_status'] + self.possible_positions
+        players = pandas.concat([
+            self.rostered_players[columns],
+            self.free_agent_players[columns]
+        ])
 
         players.to_csv(os.path.join(
             self.league_data_directory,
-            "rosters.csv"
-        ), encoding='utf8', index=False)
-
-        players.to_csv(os.path.join(
-            self.league_data_directory,
-            "historical",
-            "rosters_{:%Y-%m-%d}.csv".format(data_date)
-        ), encoding='utf8', index=False)
-
-        return players
-    
-    def scrape_elig(self, espn_players_json=None, data_date=None, draft=False):
-        """
-        Convert JSON from ESPN into a CSV of positional eligiblities for players
-        """
-        POSSIBLE_POSITIONS = ["C", "1B", "2B", "3B", "SS", "LF", "CF", "RF", "DH", "SP", "RP"]
-        POSITION_IDS = [0, 1, 2, 3, 4, 8, 9, 10, 11, 14, 15]
-        position_mapping = {k: v for k, v in zip(POSSIBLE_POSITIONS, POSITION_IDS)}
-
-        if not espn_players_json:
-            with gzip.GzipFile(self.players_info_filename, 'r') as f:
-                espn_players_json = json.loads(f.read().decode('utf-8'))
-        
-        players = []
-
-        for player_json in espn_players_json['players']:
-            player = {
-                'espn_id': player_json['id'],
-                'espn_name': player_json['player']['fullName'],
-                'espn_value': player_json['draftAuctionValue'],
-                'espn_team_id': player_json['player']['proTeamId']
-            }
-
-            for pos, espn_pos_id in position_mapping.items():
-                if espn_pos_id in player_json['player']['eligibleSlots']:
-                    player[pos] = 1
-                else:
-                    player[pos] = 0
-            
-            players.append(player)
-        
-        players = pandas.DataFrame(players)
-        print(players.dtypes)
-
-        # TODO probably should load this in a utility function
-        espn_team_mapping = pandas.read_csv(os.path.join(
-            DATA_DIRECTORY,
-            "espn_real_team_mapping.csv"
-        ))
-
-        players = players.merge(espn_team_mapping, on='espn_team_id', how='left')
-
-        columns = ['espn_name', 'espn_id', 'team_abbr'] + POSSIBLE_POSITIONS
-
-        players.to_csv(os.path.join(
-            DATA_DIRECTORY,
             "espn_eligibilities.csv"
         ), columns=columns, encoding='utf8', index=False)
             
         players.to_csv(os.path.join(
-            DATA_DIRECTORY,
+            self.league_data_directory,
             "historical",
-            "espn_eligibilities_{:%Y-%m-%d}.csv".format(data_date)
+            f"espn_eligibilities_{data_date:%Y-%m-%d}.csv"
         ), columns=columns, encoding='utf8', index=False)
 
-        if draft:
-            columns = ['espn_name', 'espn_id', 'espn_value']
-
-            players[players['espn_value'] > 0].to_csv(os.path.join(
-                DATA_DIRECTORY,
-                "espn_values.csv"
-            ), columns=columns, encoding='utf8', index=False)
+    def save_rosters(self, data_date=datetime.date.today()):
+        """Get all rostered players and save rosters to CSV"""
+        rostered_players = []
         
-        return players
+        for team in self.teams:
+            for x in team.roster:
+                player = self._process_player(x, self.possible_positions)
+                player['fantasy_team_id'] = team.team_id
 
-
-class EspnClient(object):
-    """
-    Client that sets up cookies for authentication.
-    """
-    def __init__(self, league_directory):
-        with open(os.path.join(league_directory, "cookie.txt"), 'r') as f:
-            cookie_string = f.read()
+                rostered_players.append(player)
         
-        cookie = {}
+        self.rostered_players = pandas.DataFrame(rostered_players)
 
-        for x in cookie_string.split(';'):
-            k, v = x.strip().split('=', maxsplit=1)
-            cookie[k] = v
+        self.rostered_players.to_csv(os.path.join(
+            self.league_data_directory,
+            "rosters.csv"
+        ), encoding='utf8', index=False)
+
+        self.rostered_players.to_csv(os.path.join(
+            self.league_data_directory,
+            "historical",
+            f"rosters_{data_date:%Y-%m-%d}.csv"
+        ), encoding='utf8', index=False)
         
-        self.session = requests.Session()
-        # session.cookies = requests.cookies.cookiejar_from_dict(cookie_dict)
-        self.session.headers.update({'Cookie': cookie_string})
+    def _process_free_agents(self, data_date=datetime.date.today(), size=500):
+        """Get all free agents"""
+        free_agent_players = []
+
+        for x in self.free_agents(size):
+            player = self._process_player(x, self.possible_positions)
+
+            free_agent_players.append(player)
+        
+        self.free_agent_players = pandas.DataFrame(free_agent_players)
+    
+    @staticmethod
+    def _process_player(player, possible_positions):
+        """Convert from player class to player dict"""
+        player_dict = {
+            'espn_id': player.playerId,
+            'espn_name': player.name,
+            # 'espn_value': player_json['draftAuctionValue'],
+            'pro_team': player.proTeam,
+            'espn_injury_status': player.injuryStatus
+        }
+
+        for pos in possible_positions:
+            if pos in player.eligibleSlots:
+                player_dict[pos] = 1
+            else:
+                player_dict[pos] = 0
+        
+        return player_dict
+    
+    def save_scores(self):
+        """
+        Saves all boxscores for current season
+        
+        This is based on my code in https://github.com/cwendt94/espn-api/blob/19613d73c6476a78b3ccffd4e0e045c6e457cb62/espn_api/baseball/box_score.py
+        """
+        scores = []
+
+        for i in range(1, self.currentMatchupPeriod):
+            weekly_box_scores = self.box_scores(i)
+
+            for box_score in weekly_box_scores:
+                if box_score.away_team:
+                    # we only want competitive matchups, not byes
+                    for as_home in (True, False):
+                        scores.append(self._process_box_score(
+                            box_score,
+                            self.year,
+                            i,
+                            as_home=as_home)
+                        )
+
+        scores = pandas.DataFrame(scores)
+        scores.to_csv(os.path.join(
+            self.league_data_directory,
+            "scores",
+            f"scores_{self.year}.csv"
+        ), encoding='utf8', index=False)
+
+    @staticmethod
+    def _process_box_score(box_score, year, week, as_home=True):
+        """Retrieve box scores and convert to dict"""
+        stats_mapping = [
+            ('AB', 'AB'),
+            ('H', 'H'),
+            ('R', 'R'),
+            ('HR', 'HR'),
+            ('TB', 'TB'),
+            ('RBI', 'RBI'),
+            ('BB', 'B_BB'),
+            ('SB', 'SB'),
+            ('OBP', 'OBP'),
+            ('IP', 'OUTS'),
+            ('pH', 'P_H'),
+            ('ER', 'ER'),
+            ('pBB', 'P_BB'),
+            ('W', 'W'),
+            ('SV', 'SV'),
+            ('ERA', 'ERA'),
+            ('WHIP', 'WHIP'),
+            ('K9', 'K/9')
+        ]
+
+        if as_home:
+            row = {
+                'team_id': box_score.home_team.team_id,
+                'opponent_team_id': box_score.away_team.team_id
+            }
+            stats = box_score.home_stats
+        else:
+            row = {
+                'team_id': box_score.away_team.team_id,
+                'opponent_team_id': box_score.home_team.team_id
+            }
+            stats = box_score.away_stats
+        
+        row['year'] = year
+        row['matchup_period'] = week
+
+        for stat in stats_mapping:
+            row[stat[0]] = stats[stat[1]]['value']
+
+        row['IP'] = str(int(row['IP'] / 3)) + '.' + str(int(row['IP'] % 3))
+
+        return row
